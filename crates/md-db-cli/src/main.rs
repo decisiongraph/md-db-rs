@@ -46,12 +46,18 @@ enum Commands {
     New(commands::new::NewArgs),
     /// Show forward refs or backlinks for a document
     Refs(commands::refs::RefsArgs),
+    /// Rename a document ID and cascade-update all references
+    Rename(commands::rename::RenameArgs),
     /// Full-text search across document content and frontmatter
     Search(commands::search::SearchArgs),
     /// Update fields, sections, or table cells in a markdown file
     Set(commands::set::SetArgs),
+    /// Show document set health overview (counts, validation, graph stats)
+    Stats(commands::stats::StatsArgs),
     /// Sync bidirectional relations (add missing inverse refs)
     Sync(commands::sync::SyncArgs),
+    /// Watch directory and re-validate on file changes
+    Watch(commands::watch::WatchArgs),
     /// Generate shell completions for bash, zsh, fish, elvish, or powershell
     Completions {
         /// Shell to generate completions for
@@ -80,9 +86,12 @@ fn main() {
         Commands::Validate(args) => commands::validate::run(args),
         Commands::New(args) => commands::new::run(args),
         Commands::Refs(args) => commands::refs::run(args),
+        Commands::Rename(args) => commands::rename::run(args),
         Commands::Search(args) => commands::search::run(args),
         Commands::Set(args) => commands::set::run(args),
+        Commands::Stats(args) => commands::stats::run(args),
         Commands::Sync(args) => commands::sync::run(args),
+        Commands::Watch(args) => commands::watch::run(args),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
             generate(*shell, &mut cmd, "md-db", &mut std::io::stdout());
