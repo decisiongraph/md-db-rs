@@ -19,3 +19,4 @@ pub mod set;
 pub mod stats;
 pub mod sync;
 pub mod validate;
+pub mod watch;

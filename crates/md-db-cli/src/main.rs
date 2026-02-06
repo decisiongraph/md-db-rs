@@ -54,6 +54,8 @@ enum Commands {
     Stats(commands::stats::StatsArgs),
     /// Sync bidirectional relations (add missing inverse refs)
     Sync(commands::sync::SyncArgs),
+    /// Watch directory and re-validate on file changes
+    Watch(commands::watch::WatchArgs),
     /// Generate shell completions for bash, zsh, fish, elvish, or powershell
     Completions {
         /// Shell to generate completions for
@@ -86,6 +88,7 @@ fn main() {
         Commands::Set(args) => commands::set::run(args),
         Commands::Stats(args) => commands::stats::run(args),
         Commands::Sync(args) => commands::sync::run(args),
+        Commands::Watch(args) => commands::watch::run(args),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
             generate(*shell, &mut cmd, "md-db", &mut std::io::stdout());
