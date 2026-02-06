@@ -13,6 +13,8 @@ struct Cli {
 enum Commands {
     /// Deprecate a document (set status, optionally mark superseded)
     Deprecate(commands::deprecate::DeprecateArgs),
+    /// Show structural diff between two versions of a document
+    Diff(commands::diff::DiffArgs),
     /// Describe schema types, fields, sections, and relations
     Describe(commands::describe::DescribeArgs),
     /// Read fields, sections, or table cells from a markdown file
@@ -38,6 +40,7 @@ fn main() {
 
     let result = match &cli.command {
         Commands::Deprecate(args) => commands::deprecate::run(args),
+        Commands::Diff(args) => commands::diff::run(args),
         Commands::Describe(args) => commands::describe::run(args),
         Commands::Get(args) => commands::get::run(args),
         Commands::Graph(args) => commands::graph::run(args),

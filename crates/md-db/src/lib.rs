@@ -1,5 +1,6 @@
 pub mod ast_util;
 pub mod discovery;
+pub mod diff;
 pub mod document;
 pub mod error;
 pub mod frontmatter;
