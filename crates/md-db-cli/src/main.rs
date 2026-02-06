@@ -48,6 +48,8 @@ enum Commands {
     Search(commands::search::SearchArgs),
     /// Update fields, sections, or table cells in a markdown file
     Set(commands::set::SetArgs),
+    /// Show document set health overview (counts, validation, graph stats)
+    Stats(commands::stats::StatsArgs),
     /// Sync bidirectional relations (add missing inverse refs)
     Sync(commands::sync::SyncArgs),
     /// Generate shell completions for bash, zsh, fish, elvish, or powershell
@@ -79,6 +81,7 @@ fn main() {
         Commands::Refs(args) => commands::refs::run(args),
         Commands::Search(args) => commands::search::run(args),
         Commands::Set(args) => commands::set::run(args),
+        Commands::Stats(args) => commands::stats::run(args),
         Commands::Sync(args) => commands::sync::run(args),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();

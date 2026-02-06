@@ -15,5 +15,6 @@ pub mod new;
 pub mod refs;
 pub mod search;
 pub mod set;
+pub mod stats;
 pub mod sync;
 pub mod validate;
