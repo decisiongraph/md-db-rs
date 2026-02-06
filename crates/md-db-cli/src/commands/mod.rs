@@ -1,6 +1,7 @@
 pub mod deprecate;
 pub mod diff;
 pub mod describe;
+pub mod fix;
 pub mod get;
 pub mod graph;
 pub mod inspect;
