@@ -795,13 +795,13 @@ fn validate_broken_relation_ref() {
 
 #[test]
 fn discover_all_md_files() {
-    let files = discovery::discover_files(fixtures_dir(), None, &[]).unwrap();
+    let files = discovery::discover_files(fixtures_dir(), None, &[], false).unwrap();
     assert!(files.len() >= 6); // at least our 6 fixture .md files
 }
 
 #[test]
 fn discover_adr_pattern() {
-    let files = discovery::discover_files(fixtures_dir(), Some("adr-*.md"), &[]).unwrap();
+    let files = discovery::discover_files(fixtures_dir(), Some("adr-*.md"), &[], false).unwrap();
     assert_eq!(files.len(), 3);
     assert!(files.iter().all(|f| f.file_name().unwrap().to_str().unwrap().starts_with("adr-")));
 }
@@ -815,6 +815,7 @@ fn discover_by_status_filter() {
             key: "status".into(),
             value: "accepted".into(),
         }],
+        false,
     )
     .unwrap();
     // Only ADR-001 has status=accepted
@@ -831,6 +832,7 @@ fn discover_by_type_filter() {
             key: "type".into(),
             value: "inc".into(),
         }],
+        false,
     )
     .unwrap();
     assert_eq!(files.len(), 1);
@@ -843,6 +845,7 @@ fn discover_has_field_filter() {
         fixtures_dir(),
         None,
         &[Filter::HasField("superseded_by".into())],
+        false,
     )
     .unwrap();
     // Only ADR-003 has superseded_by
@@ -856,6 +859,7 @@ fn discover_has_field_severity() {
         fixtures_dir(),
         None,
         &[Filter::HasField("severity".into())],
+        false,
     )
     .unwrap();
     // Only INC-001 has severity
@@ -874,6 +878,7 @@ fn discover_combined_filters() {
             },
             Filter::HasField("related".into()),
         ],
+        false,
     )
     .unwrap();
     // ADR-001 and ADR-002 have both type=adr and a related field
@@ -931,7 +936,7 @@ fn query_outgoing_refs_from_inc_001() {
 
 /// Find all docs that reference a given ID.
 fn find_docs_referencing(target_id: &str, schema: &Schema) -> Vec<String> {
-    let files = discovery::discover_files(fixtures_dir(), None, &[]).unwrap();
+    let files = discovery::discover_files(fixtures_dir(), None, &[], false).unwrap();
     let mut referencing = Vec::new();
 
     for path in files {
