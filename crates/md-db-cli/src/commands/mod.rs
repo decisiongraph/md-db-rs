@@ -7,4 +7,5 @@ pub mod list;
 pub mod new;
 pub mod refs;
 pub mod set;
+pub mod sync;
 pub mod validate;

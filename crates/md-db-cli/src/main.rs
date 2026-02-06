@@ -31,6 +31,8 @@ enum Commands {
     Refs(commands::refs::RefsArgs),
     /// Update fields, sections, or table cells in a markdown file
     Set(commands::set::SetArgs),
+    /// Sync bidirectional relations (add missing inverse refs)
+    Sync(commands::sync::SyncArgs),
 }
 
 fn main() {
@@ -47,6 +49,7 @@ fn main() {
         Commands::New(args) => commands::new::run(args),
         Commands::Refs(args) => commands::refs::run(args),
         Commands::Set(args) => commands::set::run(args),
+        Commands::Sync(args) => commands::sync::run(args),
     };
 
     if let Err(e) = result {

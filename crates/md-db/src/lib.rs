@@ -10,4 +10,5 @@ pub mod section;
 pub mod table;
 pub mod template;
 pub mod users;
+pub mod sync;
 pub mod validation;
