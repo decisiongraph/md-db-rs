@@ -350,7 +350,7 @@ pub fn compute_migration(diff: &SchemaDiff, dir: &Path) -> MigrationPlan {
     let mut actions = Vec::new();
 
     // Discover all markdown files once
-    let all_files = discovery::discover_files(dir, Some("*.md"), &[]).unwrap_or_default();
+    let all_files = discovery::discover_files(dir, Some("*.md"), &[], false).unwrap_or_default();
 
     // Build a map: type_name -> Vec<(PathBuf, Document)>
     let mut docs_by_type: HashMap<String, Vec<(PathBuf, Document)>> = HashMap::new();

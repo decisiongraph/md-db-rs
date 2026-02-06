@@ -44,6 +44,8 @@ enum Commands {
     Search(commands::search::SearchArgs),
     /// Update fields, sections, or table cells in a markdown file
     Set(commands::set::SetArgs),
+    /// Sync bidirectional relations (add missing inverse refs)
+    Sync(commands::sync::SyncArgs),
     /// Generate shell completions for bash, zsh, fish, elvish, or powershell
     Completions {
         /// Shell to generate completions for
@@ -71,6 +73,7 @@ fn main() {
         Commands::Refs(args) => commands::refs::run(args),
         Commands::Search(args) => commands::search::run(args),
         Commands::Set(args) => commands::set::run(args),
+        Commands::Sync(args) => commands::sync::run(args),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
             generate(*shell, &mut cmd, "md-db", &mut std::io::stdout());

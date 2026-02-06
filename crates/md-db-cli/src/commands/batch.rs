@@ -108,7 +108,7 @@ pub fn run(args: &BatchArgs) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let pattern = args.pattern.as_deref();
-    let files = discovery::discover_files(&args.dir, pattern, &filters)?;
+    let files = discovery::discover_files(&args.dir, pattern, &filters, false)?;
 
     if files.is_empty() {
         println!("0 documents match. Nothing to do.");
