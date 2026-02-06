@@ -23,6 +23,8 @@ enum Commands {
     Inspect(commands::inspect::InspectArgs),
     /// List and filter markdown files by frontmatter
     List(commands::list::ListArgs),
+    /// Detect schema changes and migrate documents
+    Migrate(commands::migrate::MigrateArgs),
     /// Validate markdown files against a KDL schema
     Validate(commands::validate::ValidateArgs),
     /// Create a new document from a schema type definition
@@ -43,6 +45,7 @@ fn main() {
         Commands::Graph(args) => commands::graph::run(args),
         Commands::Inspect(args) => commands::inspect::run(args),
         Commands::List(args) => commands::list::run(args),
+        Commands::Migrate(args) => commands::migrate::run(args),
         Commands::Validate(args) => commands::validate::run(args),
         Commands::New(args) => commands::new::run(args),
         Commands::Refs(args) => commands::refs::run(args),

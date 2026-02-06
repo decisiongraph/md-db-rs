@@ -4,6 +4,7 @@ pub mod get;
 pub mod graph;
 pub mod inspect;
 pub mod list;
+pub mod migrate;
 pub mod new;
 pub mod refs;
 pub mod set;

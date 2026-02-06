@@ -184,6 +184,15 @@ impl Document {
         self.set_field(key, value);
     }
 
+    /// Remove a frontmatter field and rebuild raw content.
+    pub fn remove_field(&mut self, key: &str) -> Option<Value> {
+        let removed = self.frontmatter.as_mut().and_then(|fm| fm.remove(key));
+        if removed.is_some() {
+            self.rebuild_raw();
+        }
+        removed
+    }
+
     /// Replace the content of a section (everything between heading and next heading).
     pub fn replace_section_content(&mut self, heading: &str, new_content: &str) -> Result<()> {
         let range = {
