@@ -8,3 +8,4 @@ pub mod new;
 pub mod refs;
 pub mod set;
 pub mod validate;
+pub mod watch;
