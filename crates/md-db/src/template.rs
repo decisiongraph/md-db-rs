@@ -62,7 +62,7 @@ fn default_value(field_def: &FieldDef, fill: bool) -> Value {
 
     // Check for date-like patterns
     if let Some(ref pat) = field_def.pattern {
-        if pat.contains("\\d{4}") && pat.contains("\\d{2}") {
+        if pat.contains(r"\d{4}") && pat.contains(r"\d{2}") {
             if fill {
                 // --fill: use real dates
                 if pat.contains('T') {
@@ -174,6 +174,81 @@ fn render_section(out: &mut String, section: &SectionDef, depth: u8) {
     for child in &section.children {
         render_section(out, child, depth + 1);
     }
+}
+
+/// Return the default value for a field as a plain string.
+///
+/// Returns `None` if the field has no meaningful default (e.g. user types, arrays).
+/// Used by the autofix command to insert missing required fields.
+pub fn field_default_string(field_def: &FieldDef) -> Option<String> {
+    // Schema-defined default takes priority
+    if let Some(ref default_str) = field_def.default {
+        return Some(expand_default_string(default_str));
+    }
+
+    // Date-like patterns
+    if let Some(ref pat) = field_def.pattern {
+        if pat.contains(r"\d{4}") && pat.contains(r"\d{2}") {
+            return Some(format_today());
+        }
+    }
+
+    match &field_def.field_type {
+        FieldType::String => None, // empty string is not useful
+        FieldType::Number => Some("0".to_string()),
+        FieldType::Bool => Some("false".to_string()),
+        FieldType::Enum(values) => values.first().cloned(),
+        _ => None, // user, ref, arrays — no sensible default
+    }
+}
+
+/// Expand a schema default string to its final value.
+fn expand_default_string(s: &str) -> String {
+    match s {
+        "$TODAY" => format_today(),
+        "$NOW" => format_now(),
+        other => other.to_string(),
+    }
+}
+
+/// Compute Levenshtein edit distance between two strings.
+pub fn levenshtein(a: &str, b: &str) -> usize {
+    let a_len = a.len();
+    let b_len = b.len();
+    if a_len == 0 {
+        return b_len;
+    }
+    if b_len == 0 {
+        return a_len;
+    }
+
+    let mut prev: Vec<usize> = (0..=b_len).collect();
+    let mut curr = vec![0; b_len + 1];
+
+    for (i, ca) in a.chars().enumerate() {
+        curr[0] = i + 1;
+        for (j, cb) in b.chars().enumerate() {
+            let cost = if ca == cb { 0 } else { 1 };
+            curr[j + 1] = (prev[j] + cost).min(prev[j + 1] + 1).min(curr[j] + 1);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+    prev[b_len]
+}
+
+/// Find closest match for `value` among `candidates` by Levenshtein distance.
+/// Returns `None` if candidates is empty or best distance exceeds threshold.
+pub fn closest_match<'a>(
+    value: &str,
+    candidates: &[&'a str],
+    max_distance: usize,
+) -> Option<&'a str> {
+    candidates
+        .iter()
+        .map(|c| (*c, levenshtein(value, c)))
+        .filter(|(_, d)| *d <= max_distance)
+        .min_by_key(|(_, d)| *d)
+        .map(|(c, _)| c)
 }
 
 #[cfg(test)]

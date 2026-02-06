@@ -15,6 +15,8 @@ enum Commands {
     Deprecate(commands::deprecate::DeprecateArgs),
     /// Describe schema types, fields, sections, and relations
     Describe(commands::describe::DescribeArgs),
+    /// Auto-fix common validation errors
+    Fix(commands::fix::FixArgs),
     /// Read fields, sections, or table cells from a markdown file
     Get(commands::get::GetArgs),
     /// Export the document link graph as mermaid, DOT, or JSON
@@ -39,6 +41,7 @@ fn main() {
     let result = match &cli.command {
         Commands::Deprecate(args) => commands::deprecate::run(args),
         Commands::Describe(args) => commands::describe::run(args),
+        Commands::Fix(args) => commands::fix::run(args),
         Commands::Get(args) => commands::get::run(args),
         Commands::Graph(args) => commands::graph::run(args),
         Commands::Inspect(args) => commands::inspect::run(args),
