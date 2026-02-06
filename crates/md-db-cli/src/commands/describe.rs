@@ -178,6 +178,20 @@ fn print_type_detail(type_def: &md_db::schema::TypeDef, schema: &Schema) {
         print_section_tree(&type_def.sections, 1);
     }
 
+    // Conditional rules
+    if !type_def.rules.is_empty() {
+        println!("\nRules:");
+        for r in &type_def.rules {
+            println!(
+                "  \"{}\"  when {}={} -> require {}",
+                r.name,
+                r.when_field,
+                r.when_equals,
+                r.then_required.join(", ")
+            );
+        }
+    }
+
     // Relations that apply to all types
     if !schema.relations.is_empty() {
         println!("\nRelations (all types):");
@@ -353,11 +367,25 @@ fn type_to_json(
         .map(|s| section_to_json(s))
         .collect();
 
+    let rules: Vec<serde_json::Value> = type_def
+        .rules
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "name": r.name,
+                "when_field": r.when_field,
+                "when_equals": r.when_equals,
+                "then_required": r.then_required,
+            })
+        })
+        .collect();
+
     let mut obj = serde_json::json!({
         "name": type_def.name,
         "description": type_def.description,
         "fields": fields,
         "sections": sections,
+        "rules": rules,
         "relations": relations_to_json(schema),
     });
     if let Some(ref f) = type_def.folder {
@@ -447,11 +475,24 @@ fn export_schema_json(schema: &Schema) -> serde_json::Value {
                 t.fields.iter().map(|f| field_to_json(f)).collect();
             let sections: Vec<serde_json::Value> =
                 t.sections.iter().map(|s| section_to_json(s)).collect();
+            let rules: Vec<serde_json::Value> = t
+                .rules
+                .iter()
+                .map(|r| {
+                    serde_json::json!({
+                        "name": r.name,
+                        "when_field": r.when_field,
+                        "when_equals": r.when_equals,
+                        "then_required": r.then_required,
+                    })
+                })
+                .collect();
             let mut obj = serde_json::json!({
                 "name": t.name,
                 "description": t.description,
                 "fields": fields,
                 "sections": sections,
+                "rules": rules,
             });
             if let Some(ref f) = t.folder {
                 obj["folder"] = serde_json::Value::String(f.clone());
