@@ -297,7 +297,11 @@ mod tests {
     use std::fs;
 
     fn create_test_dir() -> PathBuf {
-        let dir = std::env::temp_dir().join("md_db_search_test");
+        let id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("md_db_search_test_{id}_{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
