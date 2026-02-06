@@ -2,6 +2,7 @@ pub mod ast_util;
 pub mod discovery;
 pub mod document;
 pub mod error;
+pub mod export;
 pub mod frontmatter;
 pub mod graph;
 pub mod output;
