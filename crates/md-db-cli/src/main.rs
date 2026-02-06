@@ -26,6 +26,8 @@ enum Commands {
     Get(commands::get::GetArgs),
     /// Export the document link graph as mermaid, DOT, or JSON
     Graph(commands::graph::GraphArgs),
+    /// Install or uninstall a git pre-commit hook
+    Hook(commands::hook::HookArgs),
     /// Scaffold a new md-db project with schema.kdl and directory structure
     Init(commands::init::InitArgs),
     /// Inspect a document: frontmatter + sections + validation in one call
@@ -64,6 +66,7 @@ fn main() {
         Commands::Fix(args) => commands::fix::run(args),
         Commands::Get(args) => commands::get::run(args),
         Commands::Graph(args) => commands::graph::run(args),
+        Commands::Hook(args) => commands::hook::run(args),
         Commands::Init(args) => commands::init::run(args),
         Commands::Inspect(args) => commands::inspect::run(args),
         Commands::List(args) => commands::list::run(args),
