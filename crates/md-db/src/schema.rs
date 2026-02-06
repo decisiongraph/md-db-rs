@@ -20,6 +20,10 @@ pub struct TypeDef {
     pub folder: Option<String>,
     /// Maximum number of documents allowed for this type (e.g. 1 for README.md)
     pub max_count: Option<usize>,
+    /// Whether this is a singleton doc identified by filename, not frontmatter type field.
+    pub singleton: bool,
+    /// Filename pattern to match singleton docs (e.g. "README.md").
+    pub match_pattern: Option<String>,
     pub fields: Vec<FieldDef>,
     pub sections: Vec<SectionDef>,
 }
@@ -235,6 +239,7 @@ fn parse_type_def(node: &KdlNode) -> Result<TypeDef> {
     let description = get_string_prop(node, "description");
     let folder = get_string_prop(node, "folder");
     let max_count = get_i64_prop(node, "max_count").map(|n| n as usize);
+    let singleton = get_bool_prop(node, "singleton").unwrap_or(false);
 
     let children = node
         .children()
@@ -242,11 +247,27 @@ fn parse_type_def(node: &KdlNode) -> Result<TypeDef> {
 
     let mut fields = Vec::new();
     let mut sections = Vec::new();
+    let mut match_pattern = None;
 
     for child in children.nodes() {
         match child.name().value() {
-            "field" => fields.push(parse_field_def(child)?),
+            "field" => {
+                if singleton {
+                    return Err(Error::SchemaParse(format!(
+                        "singleton type '{name}' cannot have field definitions"
+                    )));
+                }
+                fields.push(parse_field_def(child)?);
+            }
             "section" => sections.push(parse_section_def(child)?),
+            "match" => {
+                match_pattern = get_string_arg(child);
+                if match_pattern.is_none() {
+                    return Err(Error::SchemaParse(format!(
+                        "match node in type '{name}' missing pattern argument"
+                    )));
+                }
+            }
             other => {
                 return Err(Error::SchemaParse(format!(
                     "unknown node in type '{name}': '{other}'"
@@ -255,11 +276,19 @@ fn parse_type_def(node: &KdlNode) -> Result<TypeDef> {
         }
     }
 
+    if singleton && match_pattern.is_none() {
+        return Err(Error::SchemaParse(format!(
+            "singleton type '{name}' requires a match pattern"
+        )));
+    }
+
     Ok(TypeDef {
         name,
         description,
         folder,
         max_count,
+        singleton,
+        match_pattern,
         fields,
         sections,
     })
@@ -839,5 +868,69 @@ type "t" {
         let schema = Schema::from_str(kdl).unwrap();
         assert!(schema.types[0].folder.is_none());
         assert!(schema.types[0].max_count.is_none());
+    }
+}
+
+#[cfg(test)]
+mod singleton_tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_singleton_type() {
+        let kdl = r#"
+type "readme" folder="." max_count=1 singleton=#true {
+    match "README.md"
+    section "Install" required=#true
+    section "Usage" required=#true
+}
+"#;
+        let schema = Schema::from_str(kdl).unwrap();
+        let t = &schema.types[0];
+        assert_eq!(t.name, "readme");
+        assert!(t.singleton);
+        assert_eq!(t.match_pattern.as_deref(), Some("README.md"));
+        assert!(t.fields.is_empty());
+        assert_eq!(t.sections.len(), 2);
+        assert_eq!(t.max_count, Some(1));
+    }
+
+    #[test]
+    fn test_singleton_rejects_fields() {
+        let kdl = r#"
+type "readme" singleton=#true {
+    match "README.md"
+    field "title" type="string"
+}
+"#;
+        let result = Schema::from_str(kdl);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("cannot have field definitions"));
+    }
+
+    #[test]
+    fn test_singleton_requires_match() {
+        let kdl = r#"
+type "readme" singleton=#true {
+    section "Body"
+}
+"#;
+        let result = Schema::from_str(kdl);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("requires a match pattern"));
+    }
+
+    #[test]
+    fn test_non_singleton_has_defaults() {
+        let kdl = r#"
+type "doc" {
+    field "title" type="string"
+    section "Body"
+}
+"#;
+        let schema = Schema::from_str(kdl).unwrap();
+        assert!(!schema.types[0].singleton);
+        assert!(schema.types[0].match_pattern.is_none());
     }
 }

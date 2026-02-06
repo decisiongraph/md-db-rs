@@ -336,6 +336,31 @@ md-db new --type adr --schema schema.kdl --dir docs/ --auto-id --fill --field ti
 md-db deprecate docs/adr-001.md --schema schema.kdl --superseded-by ADR-004 --dir docs/
 ```
 
+## Singleton document types
+
+Singleton types (e.g. README.md, CHANGELOG.md) are identified by filename pattern, not frontmatter `type` field. They require no frontmatter but still get section validation and appear in the document graph.
+
+KDL schema syntax:
+```kdl
+type "readme" folder="." max_count=1 singleton=#true {
+    match "README.md"
+    section "Install" required=#true
+    section "Usage" required=#true
+}
+```
+
+Key properties:
+- `singleton=#true` — identified by filename, not frontmatter
+- `match "PATTERN"` child node — exact filename to match
+- No `field` children allowed (no frontmatter)
+- `section` children work identically to regular types
+- Graph ID derived from filename stem: `README.md` → `README`
+- Other docs can reference singletons: `related: [README]`
+
+Diagnostic codes for singletons:
+- T020: singleton file not found (when type has required sections)
+- S010: missing required section (same as regular types)
+
 ## Schema (KDL format)
 
 Types define fields (with types, patterns, defaults, descriptions) and sections (with content/list/diagram/table constraints). Relations are global across all types.
@@ -343,6 +368,7 @@ Types define fields (with types, patterns, defaults, descriptions) and sections 
 Type-level attributes:
 - `folder="path"` — default directory for documents of this type
 - `max_count=N` — maximum number of documents allowed (e.g. 1 for README.md)
+- `singleton=#true` — doc identified by filename pattern, no frontmatter required
 - `description="..."` — human-readable description
 
 Field types: `string`, `number`, `bool`, `enum`, `ref`, `string[]`, `ref[]`, `user`, `user[]`
@@ -355,4 +381,4 @@ Content constraints on sections:
 - `diagram type="mermaid"` — must have a fenced code block with that language
 - `table { column ... }` — must have a markdown table with specified columns
 
-Document ID convention: files named `PREFIX-NNN-optional-slug.md` resolve to ID `PREFIX-NNN` (uppercased). Examples: `adr-001-use-postgresql.md` → `ADR-001`, `inc_002.md` → `INC-002`.
+Document ID convention: files named `PREFIX-NNN-optional-slug.md` resolve to ID `PREFIX-NNN` (uppercased). Examples: `adr-001-use-postgresql.md` → `ADR-001`, `inc_002.md` → `INC-002`. Singleton files use the full stem: `README.md` → `README`, `PRIVACY-POLICY.md` → `PRIVACY-POLICY`.

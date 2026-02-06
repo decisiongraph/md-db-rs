@@ -884,7 +884,10 @@ fn discover_combined_filters() {
 
 /// Given a document, collect all doc IDs it references via relation fields.
 fn collect_outgoing_refs(doc: &Document, schema: &Schema) -> Vec<String> {
-    let fm = doc.frontmatter().unwrap();
+    let fm = match doc.frontmatter.as_ref() {
+        Some(fm) => fm,
+        None => return Vec::new(),
+    };
     let mut refs = Vec::new();
     for key in fm.keys() {
         if schema.find_relation(key).is_some() {
@@ -1005,4 +1008,82 @@ fn validation_report_includes_file_paths() {
     let report = result.to_report();
     // ADR-003 has a warning
     assert!(report.contains("adr-003.md"));
+}
+
+// ─── Singleton docs ──────────────────────────────────────────────────────────
+
+fn singleton_fixtures_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/singleton")
+}
+
+fn load_singleton_schema() -> Schema {
+    Schema::from_file(singleton_fixtures_dir().join("schema.kdl")).unwrap()
+}
+
+#[test]
+fn singleton_schema_parses() {
+    let schema = load_singleton_schema();
+    let readme = schema.get_type("readme").unwrap();
+    assert!(readme.singleton);
+    assert_eq!(readme.match_pattern.as_deref(), Some("README.md"));
+    assert!(readme.fields.is_empty());
+    assert_eq!(readme.sections.len(), 3);
+    assert_eq!(readme.max_count, Some(1));
+
+    let changelog = schema.get_type("changelog").unwrap();
+    assert!(changelog.singleton);
+    assert_eq!(changelog.match_pattern.as_deref(), Some("CHANGELOG.md"));
+}
+
+#[test]
+fn singleton_readme_validates() {
+    let schema = load_singleton_schema();
+    let result = validation::validate_directory(
+        singleton_fixtures_dir(), &schema, None, None,
+    ).unwrap();
+    // README.md should be validated as singleton with no errors
+    let readme_result = result.file_results.iter().find(|fr| fr.path.contains("README.md"));
+    assert!(readme_result.is_some(), "README.md should be validated");
+    let fr = readme_result.unwrap();
+    assert_eq!(fr.errors(), 0, "README.md should have no errors: {:?}", fr.diagnostics);
+}
+
+#[test]
+fn singleton_missing_sections_reported() {
+    use md_db::document::Document;
+
+    let schema = load_singleton_schema();
+    let type_def = schema.get_type("readme").unwrap();
+
+    // A README missing required sections
+    let doc = Document::from_str("# My Project\n\nJust a title.\n").unwrap();
+    let result = validation::validate_singleton(&doc, type_def, None);
+    // Should have errors for missing Install, Usage, License
+    assert!(result.errors() >= 3, "expected 3+ errors, got: {:?}", result.diagnostics);
+    let codes: Vec<&str> = result.diagnostics.iter().map(|d| d.code.as_str()).collect();
+    assert!(codes.iter().all(|c| *c == "S010"), "all errors should be S010 (missing section)");
+}
+
+#[test]
+fn singleton_missing_file_detected() {
+    let schema = load_singleton_schema();
+    let result = validation::validate_directory(
+        singleton_fixtures_dir(), &schema, None, None,
+    ).unwrap();
+    // CHANGELOG.md doesn't exist -> should report if it has required sections
+    // The changelog type has section "Unreleased" which is NOT required
+    // So no error expected for missing CHANGELOG.md
+    let changelog_result = result.file_results.iter().find(|fr| fr.path.contains("CHANGELOG.md"));
+    assert!(changelog_result.is_none(), "CHANGELOG.md without required sections should not trigger error");
+}
+
+#[test]
+fn singleton_appears_in_graph() {
+    use md_db::graph::DocGraph;
+
+    let schema = load_singleton_schema();
+    let graph = DocGraph::build(singleton_fixtures_dir(), &schema).unwrap();
+    assert!(graph.nodes.contains_key("README"), "README should be a graph node, got: {:?}", graph.nodes.keys().collect::<Vec<_>>());
+    let node = &graph.nodes["README"];
+    assert_eq!(node.doc_type.as_deref(), Some("readme"));
 }

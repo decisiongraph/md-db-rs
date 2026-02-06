@@ -50,7 +50,27 @@ impl DocGraph {
             let id = path_to_id(path);
             let fm = match &doc.frontmatter {
                 Some(fm) => fm,
-                None => continue,
+                None => {
+                    // Check if this is a singleton type
+                    let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    let singleton_type = schema.types.iter().find(|t| {
+                        t.singleton && t.match_pattern.as_deref() == Some(filename)
+                    });
+                    if let Some(type_def) = singleton_type {
+                        let id = path_to_id(path);
+                        nodes.insert(
+                            id.clone(),
+                            DocNode {
+                                id: id.clone(),
+                                path: path.clone(),
+                                doc_type: Some(type_def.name.clone()),
+                                title: None,
+                                status: None,
+                            },
+                        );
+                    }
+                    continue;
+                }
             };
 
             let doc_type = fm.get_display("type");
