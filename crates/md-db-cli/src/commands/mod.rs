@@ -1,4 +1,5 @@
 pub mod deprecate;
+pub mod diff;
 pub mod describe;
 pub mod get;
 pub mod graph;
