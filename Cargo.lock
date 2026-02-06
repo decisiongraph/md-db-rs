@@ -612,6 +612,7 @@ dependencies = [
  "clap_complete",
  "md-db",
  "serde_json",
+ "serde_yaml",
  "tempfile",
 ]
 

@@ -13,6 +13,7 @@ pub mod list;
 pub mod migrate;
 pub mod new;
 pub mod refs;
+pub mod rename;
 pub mod search;
 pub mod set;
 pub mod stats;
