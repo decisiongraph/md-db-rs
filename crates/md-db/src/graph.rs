@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use crate::ast_util;
 use crate::document::Document;
 use crate::error::Result;
 use crate::schema::Schema;
@@ -79,6 +80,37 @@ impl DocGraph {
                             relation: rel_name.to_string(),
                         });
                     }
+                }
+            }
+
+            // Extract inline links from document body
+            let inline_links = ast_util::extract_links(&doc.body);
+            let doc_dir = path.parent();
+            for url in inline_links {
+                let target_id = if url.ends_with(".md") {
+                    // Relative .md path — resolve against doc directory
+                    let link_path = if let Some(dir) = doc_dir {
+                        dir.join(&url)
+                    } else {
+                        PathBuf::from(&url)
+                    };
+                    path_to_id(&link_path)
+                } else if is_string_id(&url) {
+                    // String ID pattern like "ADR-001"
+                    url.to_uppercase()
+                } else {
+                    // External or unrecognized link — skip
+                    continue;
+                };
+
+                // Deduplicate: skip if a frontmatter edge already exists for this pair
+                let already_exists = edges.iter().any(|e| e.from == id && e.to == target_id);
+                if !already_exists {
+                    edges.push(DocEdge {
+                        from: id.clone(),
+                        to: target_id,
+                        relation: "inline_ref".to_string(),
+                    });
                 }
             }
         }
@@ -306,6 +338,32 @@ pub fn path_to_id(path: &Path) -> String {
     stem
 }
 
+/// Check if a string looks like a document string-ID (e.g. "ADR-001", "opp-002").
+fn is_string_id(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    // Must start with alphabetic chars
+    while i < bytes.len() && bytes[i].is_ascii_alphabetic() {
+        i += 1;
+    }
+    if i == 0 {
+        return false;
+    }
+    // Then a dash or underscore
+    if i < bytes.len() && (bytes[i] == b'-' || bytes[i] == b'_') {
+        i += 1;
+    } else {
+        return false;
+    }
+    let num_start = i;
+    // Then digits
+    while i < bytes.len() && bytes[i].is_ascii_digit() {
+        i += 1;
+    }
+    // Must have consumed digits and reached the end
+    i > num_start && i == bytes.len()
+}
+
 /// Extract ref strings from a YAML value (single string or array of strings).
 fn extract_refs(val: &serde_yaml::Value) -> Vec<String> {
     match val {
@@ -417,5 +475,65 @@ mod tests {
         assert!(dot.starts_with("digraph docs"));
         assert!(dot.contains("ADR-001"));
         assert!(dot.contains("->"));
+    }
+
+    #[test]
+    fn test_inline_link_edges() {
+        let schema_content = std::fs::read_to_string("../../tests/fixtures/schema.kdl").unwrap();
+        let schema = Schema::from_str(&schema_content).unwrap();
+        let graph = DocGraph::build("../../tests/fixtures", &schema).unwrap();
+
+        // ADR-003 has inline links to ./adr-001.md and ./adr-002.md
+        let refs = graph.refs_from("ADR-003");
+        let inline_refs: Vec<&DocEdge> = refs
+            .iter()
+            .filter(|e| e.relation == "inline_ref")
+            .copied()
+            .collect();
+
+        let targets: Vec<&str> = inline_refs.iter().map(|e| e.to.as_str()).collect();
+        assert!(
+            targets.contains(&"ADR-001"),
+            "ADR-003 should have inline_ref to ADR-001"
+        );
+        assert!(
+            targets.contains(&"ADR-002"),
+            "ADR-003 should have inline_ref to ADR-002"
+        );
+    }
+
+    #[test]
+    fn test_inline_link_dedup_with_frontmatter() {
+        // If a frontmatter relation edge already exists for the same from->to pair,
+        // no duplicate inline_ref edge should be created
+        let schema_content = std::fs::read_to_string("../../tests/fixtures/schema.kdl").unwrap();
+        let schema = Schema::from_str(&schema_content).unwrap();
+        let graph = DocGraph::build("../../tests/fixtures", &schema).unwrap();
+
+        // Count all edges from ADR-003 to ADR-001
+        let edges_to_adr001: Vec<&DocEdge> = graph
+            .edges
+            .iter()
+            .filter(|e| e.from == "ADR-003" && e.to == "ADR-001")
+            .collect();
+
+        // Should not have duplicates — only one edge per unique from->to pair
+        // (frontmatter edge OR inline_ref, not both)
+        assert!(
+            edges_to_adr001.len() <= 1,
+            "Should not have duplicate edges from ADR-003 to ADR-001, found {}",
+            edges_to_adr001.len()
+        );
+    }
+
+    #[test]
+    fn test_is_string_id() {
+        assert!(super::is_string_id("ADR-001"));
+        assert!(super::is_string_id("opp-002"));
+        assert!(super::is_string_id("GOV_003"));
+        assert!(!super::is_string_id("https://example.com"));
+        assert!(!super::is_string_id("./adr-001.md"));
+        assert!(!super::is_string_id("just-text"));
+        assert!(!super::is_string_id(""));
     }
 }
