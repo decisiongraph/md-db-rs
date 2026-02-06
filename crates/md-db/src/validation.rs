@@ -200,6 +200,9 @@ pub fn validate_document(
     // Validate fields
     validate_fields(fm, type_def, schema, known_files, known_ids, &doc.path, user_config, &mut diagnostics);
 
+    // Validate conditional rules (if/then constraints)
+    validate_rules(fm, type_def, &mut diagnostics);
+
     // Validate relation fields (defined at schema level, not per-type)
     validate_relation_fields(fm, schema, known_files, known_ids, &doc.path, &mut diagnostics);
 
@@ -248,6 +251,41 @@ fn validate_fields(
 
         // Type check
         validate_field_value(&field_def.name, val, field_def, schema, known_files, known_ids, doc_path, user_config, diags);
+    }
+}
+
+/// Validate conditional rules: when a field matches a value, other fields become required.
+fn validate_rules(
+    fm: &crate::frontmatter::Frontmatter,
+    type_def: &TypeDef,
+    diags: &mut Vec<Diagnostic>,
+) {
+    for rule in &type_def.rules {
+        if let Some(val) = fm.get(&rule.when_field) {
+            let val_str = match val.as_str() {
+                Some(s) => s.to_string(),
+                None => continue,
+            };
+            if val_str == rule.when_equals {
+                for required_field in &rule.then_required {
+                    if fm.get(required_field).is_none() {
+                        diags.push(Diagnostic {
+                            severity: Severity::Error,
+                            code: "F040".into(),
+                            message: format!(
+                                "field \"{}\" required when {}={}",
+                                required_field, rule.when_field, rule.when_equals
+                            ),
+                            location: format!("frontmatter.{}", required_field),
+                            hint: Some(format!(
+                                "add '{}' to frontmatter (required by rule \"{}\")",
+                                required_field, rule.name
+                            )),
+                        });
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -907,6 +945,26 @@ fn type_mismatch(field_name: &str, expected: &str, got: &serde_yaml::Value) -> D
     }
 }
 
+/// Validate a singleton document (no frontmatter required, section-only validation).
+pub fn validate_singleton(
+    doc: &Document,
+    type_def: &TypeDef,
+    user_config: Option<&UserConfig>,
+) -> FileResult {
+    let path = doc
+        .path
+        .as_ref()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "<string>".to_string());
+
+    let mut diagnostics = Vec::new();
+
+    // Validate sections only (no frontmatter checks)
+    validate_sections(doc, &type_def.sections, &[], user_config, &mut diagnostics);
+
+    FileResult { path, diagnostics }
+}
+
 /// Validate that no type exceeds its max_count.
 fn validate_type_counts(
     files: &[PathBuf],
@@ -985,7 +1043,7 @@ pub fn validate_directory(
     pattern: Option<&str>,
     user_config: Option<&UserConfig>,
 ) -> crate::error::Result<ValidationResult> {
-    let files = crate::discovery::discover_files(&dir, pattern, &[])?;
+    let files = crate::discovery::discover_files(&dir, pattern, &[], false)?;
 
     // Build known file set and known ID set for cross-ref validation
     let known_files: HashSet<PathBuf> = files
@@ -1019,6 +1077,19 @@ pub fn validate_directory(
             }
         };
 
+        // Check if this is a singleton match
+        let is_singleton = {
+            let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            schema.types.iter().find(|t| {
+                t.singleton && t.match_pattern.as_deref() == Some(filename)
+            })
+        };
+
+        if let Some(type_def) = is_singleton {
+            file_results.push(validate_singleton(&doc, type_def, user_config));
+            continue;
+        }
+
         // Skip files without frontmatter type (not managed by schema)
         if doc.frontmatter.is_none() {
             continue;
@@ -1032,10 +1103,54 @@ pub fn validate_directory(
         file_results.push(validate_document(&doc, schema, &known_files, &known_ids, user_config));
     }
 
-    // Validate max_count per type
+    // Validate max_count per type (includes singletons counted by match)
     validate_type_counts(&files, schema, &mut file_results);
 
+    // Check for missing required singletons
+    validate_singleton_presence(&files, schema, &mut file_results);
+
     Ok(ValidationResult { file_results })
+}
+
+/// Check that singleton types with required sections have their file present.
+fn validate_singleton_presence(
+    files: &[PathBuf],
+    schema: &Schema,
+    file_results: &mut Vec<FileResult>,
+) {
+    for type_def in &schema.types {
+        if !type_def.singleton {
+            continue;
+        }
+        let pattern = match &type_def.match_pattern {
+            Some(p) => p,
+            None => continue,
+        };
+
+        let found = files.iter().any(|p| {
+            p.file_name().and_then(|n| n.to_str()) == Some(pattern.as_str())
+        });
+
+        if !found {
+            // Check if any required section exists -> the file itself is needed
+            let has_required = type_def.sections.iter().any(|s| s.required);
+            if has_required {
+                file_results.push(FileResult {
+                    path: pattern.clone(),
+                    diagnostics: vec![Diagnostic {
+                        severity: Severity::Error,
+                        code: "T020".into(),
+                        message: format!(
+                            "singleton type \"{}\" expects file \"{}\" but it was not found",
+                            type_def.name, pattern
+                        ),
+                        location: format!("type \"{}\"", type_def.name),
+                        hint: Some(format!("create {} in the project", pattern)),
+                    }],
+                });
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1391,6 +1506,102 @@ type "doc" {
         let result = validate_document(&doc, &schema, &HashSet::new(), &HashSet::new(), None);
         let f010 = result.diagnostics.iter().find(|d| d.code == "F010").unwrap();
         assert!(f010.hint.as_ref().unwrap().contains("Short summary"));
+    }
+
+    // ─── Conditional rule tests ──────────────────────────────────────────
+
+    fn rule_schema() -> Schema {
+        Schema::from_str(
+            r#"
+type "adr" {
+    field "status" type="enum" required=#true {
+        values "proposed" "accepted" "superseded"
+    }
+    field "date" type="string"
+    field "superseded_by" type="string"
+    section "Decision" required=#true
+
+    rule "accepted requires date" {
+        when "status" equals="accepted"
+        then-required "date"
+    }
+    rule "superseded requires superseded_by" {
+        when "status" equals="superseded"
+        then-required "superseded_by"
+    }
+}
+"#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn test_rule_condition_not_triggered() {
+        let doc = Document::from_str(
+            "---\ntype: adr\nstatus: proposed\n---\n\n# Decision\n\nX\n",
+        )
+        .unwrap();
+        let schema = rule_schema();
+        let result = validate_document(&doc, &schema, &HashSet::new(), &HashSet::new(), None);
+        assert!(
+            !result.diagnostics.iter().any(|d| d.code == "F040"),
+            "should not trigger rule when condition doesn't match"
+        );
+    }
+
+    #[test]
+    fn test_rule_condition_met_field_present() {
+        let doc = Document::from_str(
+            "---\ntype: adr\nstatus: accepted\ndate: \"2025-01-01\"\n---\n\n# Decision\n\nX\n",
+        )
+        .unwrap();
+        let schema = rule_schema();
+        let result = validate_document(&doc, &schema, &HashSet::new(), &HashSet::new(), None);
+        assert!(
+            !result.diagnostics.iter().any(|d| d.code == "F040"),
+            "should not error when conditionally required field is present"
+        );
+    }
+
+    #[test]
+    fn test_rule_condition_met_field_missing() {
+        let doc = Document::from_str(
+            "---\ntype: adr\nstatus: accepted\n---\n\n# Decision\n\nX\n",
+        )
+        .unwrap();
+        let schema = rule_schema();
+        let result = validate_document(&doc, &schema, &HashSet::new(), &HashSet::new(), None);
+        let f040s: Vec<_> = result.diagnostics.iter().filter(|d| d.code == "F040").collect();
+        assert_eq!(f040s.len(), 1, "expected 1 F040 diagnostic, got: {:?}", f040s);
+        assert!(f040s[0].message.contains("date"));
+        assert!(f040s[0].message.contains("status=accepted"));
+    }
+
+    #[test]
+    fn test_rule_superseded_missing_field() {
+        let doc = Document::from_str(
+            "---\ntype: adr\nstatus: superseded\n---\n\n# Decision\n\nX\n",
+        )
+        .unwrap();
+        let schema = rule_schema();
+        let result = validate_document(&doc, &schema, &HashSet::new(), &HashSet::new(), None);
+        let f040s: Vec<_> = result.diagnostics.iter().filter(|d| d.code == "F040").collect();
+        assert_eq!(f040s.len(), 1);
+        assert!(f040s[0].message.contains("superseded_by"));
+    }
+
+    #[test]
+    fn test_rule_superseded_field_present() {
+        let doc = Document::from_str(
+            "---\ntype: adr\nstatus: superseded\nsuperseded_by: ADR-002\n---\n\n# Decision\n\nX\n",
+        )
+        .unwrap();
+        let schema = rule_schema();
+        let result = validate_document(&doc, &schema, &HashSet::new(), &HashSet::new(), None);
+        assert!(
+            !result.diagnostics.iter().any(|d| d.code == "F040"),
+            "should pass when superseded_by is present"
+        );
     }
 
     #[test]

@@ -20,11 +20,20 @@ pub struct GraphArgs {
     /// Filter by document type
     #[arg(long = "type")]
     pub doc_type: Option<String>,
+
+    /// Run structural health checks instead of rendering the graph
+    #[arg(long)]
+    pub check: bool,
 }
 
 pub fn run(args: &GraphArgs) -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_file(&args.schema)?;
     let graph = DocGraph::build(&args.dir, &schema)?;
+
+    if args.check {
+        return run_check(&graph, &schema, &args.format);
+    }
+
     let filter_type = args.doc_type.as_deref();
 
     match args.format.as_str() {
@@ -77,6 +86,57 @@ pub fn run(args: &GraphArgs) -> Result<(), Box<dyn std::error::Error>> {
         other => {
             return Err(format!("unknown format \"{other}\", expected mermaid, dot, or json").into());
         }
+    }
+
+    Ok(())
+}
+
+fn run_check(
+    graph: &DocGraph,
+    schema: &Schema,
+    format: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let diags = graph.check_health(schema);
+
+    match format {
+        "json" => {
+            let items: Vec<serde_json::Value> = diags
+                .iter()
+                .map(|d| {
+                    serde_json::json!({
+                        "code": d.code,
+                        "severity": d.severity,
+                        "message": d.message,
+                    })
+                })
+                .collect();
+            let result = serde_json::json!({
+                "diagnostics": items,
+                "count": items.len(),
+            });
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+        _ => {
+            if diags.is_empty() {
+                println!("No issues found.");
+            } else {
+                for d in &diags {
+                    let icon = match d.severity.as_str() {
+                        "error" => "ERR ",
+                        "warning" => "WARN",
+                        "info" => "INFO",
+                        _ => "    ",
+                    };
+                    println!("[{icon}] {}: {}", d.code, d.message);
+                }
+                println!("\n{} issue(s) found.", diags.len());
+            }
+        }
+    }
+
+    let has_errors = diags.iter().any(|d| d.severity == "error");
+    if has_errors {
+        std::process::exit(1);
     }
 
     Ok(())

@@ -389,7 +389,7 @@ fn tool_list_docs(args: &Value) -> Result<Value, String> {
     }
 
     let mut files =
-        discovery::discover_files(&PathBuf::from(&dir), pattern.as_deref(), &filters)
+        discovery::discover_files(&PathBuf::from(&dir), pattern.as_deref(), &filters, false)
             .map_err(|e| e.to_string())?;
 
     // Sort if requested
@@ -887,6 +887,7 @@ fn relations_to_json(schema: &Schema) -> Value {
                     md_db::schema::Cardinality::Many => "many",
                 },
                 "description": r.description,
+                "acyclic": r.acyclic,
             })
         })
         .collect();
