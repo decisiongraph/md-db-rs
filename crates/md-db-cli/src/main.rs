@@ -36,6 +36,8 @@ enum Commands {
     Inspect(commands::inspect::InspectArgs),
     /// List and filter markdown files by frontmatter
     List(commands::list::ListArgs),
+    /// Start MCP (Model Context Protocol) server over stdio
+    Mcp,
     /// Detect schema changes and migrate documents
     Migrate(commands::migrate::MigrateArgs),
     /// Validate markdown files against a KDL schema
@@ -79,6 +81,7 @@ fn main() {
         Commands::Init(args) => commands::init::run(args),
         Commands::Inspect(args) => commands::inspect::run(args),
         Commands::List(args) => commands::list::run(args),
+        Commands::Mcp => commands::mcp::run(),
         Commands::Migrate(args) => commands::migrate::run(args),
         Commands::Validate(args) => commands::validate::run(args),
         Commands::New(args) => commands::new::run(args),

@@ -10,6 +10,7 @@ pub mod hook;
 pub mod init;
 pub mod inspect;
 pub mod list;
+pub mod mcp;
 pub mod migrate;
 pub mod new;
 pub mod refs;
