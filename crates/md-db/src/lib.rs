@@ -1,9 +1,11 @@
 pub mod ast_util;
 pub mod discovery;
+pub mod diff;
 pub mod document;
 pub mod error;
 pub mod frontmatter;
 pub mod graph;
+pub mod migrate;
 pub mod output;
 pub mod schema;
 pub mod section;
@@ -11,4 +13,5 @@ pub mod table;
 pub mod template;
 pub mod users;
 pub mod cache;
+pub mod search;
 pub mod validation;
