@@ -8,14 +8,28 @@ use crate::document::Document;
 use crate::graph::{path_to_id, DocGraph};
 use crate::schema::Schema;
 
+/// Encode a string for safe use in HTML double-quoted attributes (href, class, etc.).
+/// Uses encode_minimal which escapes &, <, >, ", and ' — sufficient for attribute values
+/// inside double quotes. We don't use encode_attribute because it hex-encodes `-` and `.`
+/// which breaks URLs.
+fn encode_attr(s: &str) -> String {
+    htmlescape::encode_minimal(s)
+}
+
+/// Encode a string for safe use in HTML text content.
+fn encode_text(s: &str) -> String {
+    htmlescape::encode_minimal(s)
+}
+
 /// Render a Document's markdown body to HTML using comrak.
+/// Raw HTML blocks in markdown are stripped (unsafe_ = false) to prevent XSS.
 fn render_markdown_to_html(body: &str) -> String {
     let arena = Arena::new();
     let mut opts = Options::default();
     opts.extension.table = true;
     opts.extension.strikethrough = true;
     opts.extension.autolink = true;
-    opts.render.unsafe_ = true;
+    opts.render.unsafe_ = false;
     let root = comrak::parse_document(&arena, body, &opts);
     let mut html = Vec::new();
     comrak::format_html(root, &opts, &mut html).unwrap_or_default();
@@ -58,7 +72,11 @@ fn linkify_refs(html: &str, known_ids: &[String]) -> String {
     re.replace_all(html, |caps: &regex::Captures| {
         let id = &caps[0];
         let lower = id.to_lowercase();
-        format!("<a href=\"{lower}.html\">{id}</a>")
+        format!(
+            "<a href=\"{}\">{}</a>",
+            encode_attr(&format!("{lower}.html")),
+            encode_text(id),
+        )
     })
     .to_string()
 }
@@ -109,7 +127,11 @@ pub fn export_html(doc: &Document, known_ids: &[String], backlinks: &[(String, S
         .as_ref()
         .map(|s| {
             let class = format!("status-{}", s.to_lowercase());
-            format!(" <span class=\"status-badge {class}\">{s}</span>")
+            format!(
+                " <span class=\"status-badge {}\">{}</span>",
+                encode_attr(&class),
+                encode_text(s),
+            )
         })
         .unwrap_or_default();
 
@@ -120,26 +142,30 @@ pub fn export_html(doc: &Document, known_ids: &[String], backlinks: &[(String, S
         for (ref_id, ref_relation) in backlinks {
             let lower = ref_id.to_lowercase();
             bl.push_str(&format!(
-                "<li><a href=\"{lower}.html\">{ref_id}</a> ({ref_relation})</li>\n"
+                "<li><a href=\"{}\">{}</a> ({})</li>\n",
+                encode_attr(&format!("{lower}.html")),
+                encode_text(ref_id),
+                encode_text(ref_relation),
             ));
         }
         bl.push_str("</ul></div>\n");
         bl
     };
 
-    let encoded_title = htmlescape::encode_minimal(&title);
+    let encoded_title = encode_text(&title);
+    let encoded_doc_id = encode_text(&doc_id);
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{doc_id} — {encoded_title}</title>
+<title>{encoded_doc_id} — {encoded_title}</title>
 <style>{CSS}</style>
 </head>
 <body>
 <nav><a href="index.html">Index</a></nav>
-<h1>{doc_id}{status_badge}</h1>
+<h1>{encoded_doc_id}{status_badge}</h1>
 {fm_html}
 {body_linked}
 {backlinks_html}
@@ -178,14 +204,17 @@ pub fn export_index(docs: &[(String, &Document)]) -> String {
     for (doc_type, entries) in &by_type {
         let upper_type = doc_type.to_uppercase();
         body.push_str(&format!(
-            "<h2>{upper_type} ({})</h2>\n<ul>\n",
+            "<h2>{} ({})</h2>\n<ul>\n",
+            encode_text(&upper_type),
             entries.len()
         ));
         for (id, title) in entries {
             let lower = id.to_lowercase();
-            let encoded = htmlescape::encode_minimal(title);
             body.push_str(&format!(
-                "<li><a href=\"{lower}.html\">{id}</a> — {encoded}</li>\n"
+                "<li><a href=\"{}\">{}</a> — {}</li>\n",
+                encode_attr(&format!("{lower}.html")),
+                encode_text(id),
+                encode_text(title),
             ));
         }
         body.push_str("</ul>\n");
@@ -316,6 +345,37 @@ mod tests {
     }
 
     #[test]
+    fn test_xss_prevention_in_status_badge() {
+        let doc = Document::from_str(
+            "---\ntitle: XSS Test\nstatus: '\"><script>alert(1)</script>'\n---\n\nBody\n",
+        )
+        .unwrap();
+        let html = export_html(&doc, &[], &[]);
+        assert!(!html.contains("<script>"), "raw <script> must be escaped");
+        assert!(html.contains("&lt;script&gt;") || html.contains("&lt;script&gt;"));
+    }
+
+    #[test]
+    fn test_xss_prevention_in_backlinks() {
+        let doc =
+            Document::from_str("---\ntitle: Test\nstatus: ok\n---\n\nBody\n").unwrap();
+        let backlinks = vec![(
+            "\"><script>alert(1)</script>".to_string(),
+            "enables".to_string(),
+        )];
+        let html = export_html(&doc, &[], &backlinks);
+        assert!(!html.contains("<script>"), "raw <script> must be escaped in backlinks");
+    }
+
+    #[test]
+    fn test_raw_html_stripped_from_markdown() {
+        let md = "# Hello\n\n<script>alert('xss')</script>\n\nSafe text.\n";
+        let html = render_markdown_to_html(md);
+        assert!(!html.contains("<script>"), "raw HTML should be stripped");
+        assert!(html.contains("Safe text."));
+    }
+
+    #[test]
     fn test_export_index() {
         let doc1 =
             Document::from_str("---\ntitle: ADR 1\ntype: adr\n---\n\nBody\n").unwrap();
@@ -334,9 +394,9 @@ mod tests {
 
     #[test]
     fn test_export_site() {
-        let dir = std::env::temp_dir().join("md_db_export_test");
-        let input = dir.join("input");
-        let output = dir.join("output");
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("input");
+        let output = dir.path().join("output");
         std::fs::create_dir_all(&input).unwrap();
 
         std::fs::write(
@@ -349,8 +409,5 @@ mod tests {
         assert_eq!(count, 1);
         assert!(output.join("index.html").exists());
         assert!(output.join("adr-001.html").exists());
-
-        // Cleanup
-        std::fs::remove_dir_all(&dir).ok();
     }
 }

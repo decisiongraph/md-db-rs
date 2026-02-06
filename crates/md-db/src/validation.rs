@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use regex::Regex;
+use regex::{Regex, RegexBuilder};
 
 use crate::document::Document;
 use comrak::{Arena, Options};
@@ -526,7 +526,7 @@ fn validate_ref(
 ) {
     // Check if it matches any ref-format pattern
     let matches_format = schema.ref_formats.iter().any(|rf| {
-        Regex::new(&rf.pattern)
+        safe_regex(&rf.pattern)
             .map(|re| re.is_match(value))
             .unwrap_or(false)
     });
@@ -905,8 +905,16 @@ fn validate_diagram_constraint(
     }
 }
 
+/// Compile a regex with a size limit to prevent excessive compilation time from
+/// pathological patterns in user-provided schemas.
+fn safe_regex(pattern: &str) -> Result<Regex, regex::Error> {
+    RegexBuilder::new(pattern)
+        .size_limit(1 << 20) // 1 MiB compiled NFA limit
+        .build()
+}
+
 fn check_pattern(field_name: &str, value: &str, pattern: &str, diags: &mut Vec<Diagnostic>) {
-    match Regex::new(pattern) {
+    match safe_regex(pattern) {
         Ok(re) => {
             if !re.is_match(value) {
                 diags.push(Diagnostic {

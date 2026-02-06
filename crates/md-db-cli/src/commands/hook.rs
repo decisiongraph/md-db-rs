@@ -22,7 +22,7 @@ set -euo pipefail
 
 changed=$(git diff --cached --name-only --diff-filter=ACM -- '*.md')
 if [ -n "$changed" ]; then
-    echo "$changed" | md-db validate --stdin-list --schema {SCHEMA}
+    echo "$changed" | md-db validate --stdin-list --schema '{SCHEMA}'
 fi
 "#;
 
@@ -35,6 +35,11 @@ pub fn run(args: &HookArgs) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn install(args: &HookArgs) -> Result<(), Box<dyn std::error::Error>> {
+    // Reject schema paths with characters that could escape single-quoted shell strings
+    if args.schema.contains('\'') || args.schema.contains('\0') {
+        return Err("schema path contains unsafe characters (single quote or null byte)".into());
+    }
+
     let hooks_dir = args.dir.join(".git/hooks");
     if !hooks_dir.exists() {
         return Err("not a git repository (no .git/hooks directory)".into());

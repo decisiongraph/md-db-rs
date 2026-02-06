@@ -44,15 +44,16 @@ pub struct BatchArgs {
 }
 
 pub fn run(args: &BatchArgs) -> Result<(), Box<dyn std::error::Error>> {
-    // Require at least one filter for safety
-    if args.fields.is_empty()
-        && args.not_fields.is_empty()
-        && args.has_fields.is_empty()
-        && args.contains.is_empty()
-        && args.pattern.is_none()
-    {
+    // Require at least one frontmatter-level filter for safety.
+    // --pattern alone is not sufficient because "*.md" matches everything.
+    let has_frontmatter_filter = !args.fields.is_empty()
+        || !args.not_fields.is_empty()
+        || !args.has_fields.is_empty()
+        || !args.contains.is_empty();
+
+    if !has_frontmatter_filter {
         return Err(
-            "at least one filter is required (--field, --not-field, --has-field, --contains, or --pattern)"
+            "at least one frontmatter filter is required (--field, --not-field, --has-field, or --contains)"
                 .into(),
         );
     }
