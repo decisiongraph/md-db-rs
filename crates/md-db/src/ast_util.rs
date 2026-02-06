@@ -1,4 +1,5 @@
 use comrak::nodes::{AstNode, NodeValue};
+use comrak::{Arena, Options};
 
 use crate::table::Table;
 
@@ -215,6 +216,21 @@ pub fn parse_table_node<'a>(table_node: &'a AstNode<'a>) -> Table {
     Table::new(headers, rows)
 }
 
+/// Parse markdown body and return all link URLs found in the AST.
+pub fn extract_links(body: &str) -> Vec<String> {
+    let arena = Arena::new();
+    let mut opts = Options::default();
+    opts.extension.table = true;
+    let root = comrak::parse_document(&arena, body, &opts);
+    let mut links = Vec::new();
+    for node in root.descendants() {
+        if let NodeValue::Link(ref link) = node.data.borrow().value {
+            links.push(link.url.clone());
+        }
+    }
+    links
+}
+
 #[cfg(test)]
 mod tests {
     use comrak::{Arena, Options};
@@ -296,5 +312,22 @@ mod tests {
         assert!(table_text.contains("| 1 | 2 |"));
         assert!(!table_text.contains("Some text"));
         assert!(!table_text.contains("More text"));
+    }
+
+    #[test]
+    fn test_extract_links() {
+        let md = "See [ADR-001](./adr-001.md) and [OPP](./opp-001.md) for details.\n\nAlso [external](https://example.com).\n";
+        let links = super::extract_links(md);
+        assert_eq!(links.len(), 3);
+        assert_eq!(links[0], "./adr-001.md");
+        assert_eq!(links[1], "./opp-001.md");
+        assert_eq!(links[2], "https://example.com");
+    }
+
+    #[test]
+    fn test_extract_links_empty() {
+        let md = "No links here, just plain text.\n";
+        let links = super::extract_links(md);
+        assert!(links.is_empty());
     }
 }

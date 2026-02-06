@@ -45,7 +45,7 @@ pub fn run(args: &StatsArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     // Aggregate by_type: { type_name -> { total, by_status: { status -> count } } }
     let mut by_type: BTreeMap<String, TypeStats> = BTreeMap::new();
-    let files = md_db::discovery::discover_files(&args.dir, None, &[])?;
+    let files = md_db::discovery::discover_files(&args.dir, None, &[], false)?;
     for path in &files {
         let doc = match Document::from_file(path) {
             Ok(d) => d,
