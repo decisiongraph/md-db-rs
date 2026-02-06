@@ -1,3 +1,4 @@
+pub mod batch;
 pub mod deprecate;
 pub mod describe;
 pub mod get;
