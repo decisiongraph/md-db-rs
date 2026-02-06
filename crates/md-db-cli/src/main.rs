@@ -20,6 +20,8 @@ enum Commands {
     Diff(commands::diff::DiffArgs),
     /// Describe schema types, fields, sections, and relations
     Describe(commands::describe::DescribeArgs),
+    /// Export documents to a static HTML site
+    Export(commands::export::ExportArgs),
     /// Auto-fix common validation errors
     Fix(commands::fix::FixArgs),
     /// Read fields, sections, or table cells from a markdown file
@@ -63,6 +65,7 @@ fn main() {
         Commands::Deprecate(args) => commands::deprecate::run(args),
         Commands::Diff(args) => commands::diff::run(args),
         Commands::Describe(args) => commands::describe::run(args),
+        Commands::Export(args) => commands::export::run(args),
         Commands::Fix(args) => commands::fix::run(args),
         Commands::Get(args) => commands::get::run(args),
         Commands::Graph(args) => commands::graph::run(args),

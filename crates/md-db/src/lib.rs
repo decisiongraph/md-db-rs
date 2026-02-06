@@ -3,6 +3,7 @@ pub mod discovery;
 pub mod diff;
 pub mod document;
 pub mod error;
+pub mod export;
 pub mod frontmatter;
 pub mod graph;
 pub mod migrate;
