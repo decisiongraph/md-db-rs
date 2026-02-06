@@ -29,6 +29,8 @@ enum Commands {
     New(commands::new::NewArgs),
     /// Show forward refs or backlinks for a document
     Refs(commands::refs::RefsArgs),
+    /// Full-text search across document content and frontmatter
+    Search(commands::search::SearchArgs),
     /// Update fields, sections, or table cells in a markdown file
     Set(commands::set::SetArgs),
 }
@@ -46,6 +48,7 @@ fn main() {
         Commands::Validate(args) => commands::validate::run(args),
         Commands::New(args) => commands::new::run(args),
         Commands::Refs(args) => commands::refs::run(args),
+        Commands::Search(args) => commands::search::run(args),
         Commands::Set(args) => commands::set::run(args),
     };
 
