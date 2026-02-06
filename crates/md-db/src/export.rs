@@ -221,7 +221,7 @@ pub fn export_site(
     std::fs::create_dir_all(output_dir)
         .map_err(|_| crate::error::Error::WriteFailed(output_dir.to_path_buf()))?;
 
-    let files = crate::discovery::discover_files(dir, None, &[])?;
+    let files = crate::discovery::discover_files(dir, None, &[], false)?;
 
     // Load all documents
     let mut docs: Vec<(String, Document)> = Vec::new();
