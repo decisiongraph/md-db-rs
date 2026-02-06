@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use walkdir::WalkDir;
+use ignore::WalkBuilder;
 
 use crate::error::Result;
 use crate::frontmatter::Frontmatter;
@@ -27,13 +27,22 @@ pub fn discover_files(
     dir: impl AsRef<Path>,
     pattern: Option<&str>,
     filters: &[Filter],
+    no_ignore: bool,
 ) -> Result<Vec<PathBuf>> {
     let dir = dir.as_ref();
     let glob_pattern = pattern.unwrap_or("*.md");
 
     let mut results = Vec::new();
 
-    for entry in WalkDir::new(dir).follow_links(true).into_iter().flatten() {
+    let walker = WalkBuilder::new(dir)
+        .hidden(false)
+        .git_ignore(!no_ignore)
+        .git_global(!no_ignore)
+        .git_exclude(!no_ignore)
+        .follow_links(true)
+        .build();
+
+    for entry in walker.filter_map(|e| e.ok()) {
         let path = entry.path();
 
         if !path.is_file() {
