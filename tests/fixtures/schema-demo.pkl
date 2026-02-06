@@ -1,0 +1,39 @@
+// Schema definition for Architecture Decision Records
+// Starlark/Pkl-style: config-as-code, very expressive
+
+schema = type("adr") {
+    // Frontmatter fields
+    field("title", string, required = true)
+    field("status", enum([
+        "proposed",
+        "accepted",
+        "rejected",
+        "deprecated",
+        "superseded",
+    ]), required = true)
+    field("author", string, required = true, pattern = "^@.+")
+    field("reviewers", list(string))
+    field("tags", list(string))
+    field("superseded_by", ref)
+    field("related", list(ref))
+
+    // Document structure
+    section("Decision", required = true)
+    section("Consequences", required = true) {
+        section("Positive", required = true)
+        section("Negative")
+    }
+    section("Alternatives Considered") {
+        table(required = true) {
+            column("Option", string, required = true)
+            column("Score", number)
+            column("Notes", string)
+        }
+    }
+}
+
+// How references resolve
+ref_format = {
+    string_id: pattern("^ADR-\\d+$"),
+    relative_path: pattern("\\.md$"),
+}

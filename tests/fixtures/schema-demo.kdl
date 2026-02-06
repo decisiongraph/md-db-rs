@@ -1,0 +1,37 @@
+// Schema definition for Architecture Decision Records
+// KDL format: tree-structured, minimal punctuation
+
+type "adr" {
+    // Frontmatter field validation
+    field "title" type="string" required=true
+    field "status" type="enum" required=true {
+        values "proposed" "accepted" "rejected" "deprecated" "superseded"
+    }
+    field "author" type="string" required=true pattern="^@.+"
+    field "reviewers" type="string[]"
+    field "tags" type="string[]"
+    field "superseded_by" type="ref"
+    field "related" type="ref[]"
+
+    // Required document sections
+    section "Decision" required=true
+    section "Consequences" required=true {
+        section "Positive" required=true
+        section "Negative"
+    }
+
+    // Optional sections with table constraints
+    section "Alternatives Considered" {
+        table required=true {
+            column "Option" type="string" required=true
+            column "Score" type="number"
+            column "Notes" type="string"
+        }
+    }
+}
+
+// Reference types define how cross-doc refs resolve
+ref-format {
+    string-id pattern="^ADR-\\d+$"    // matches "ADR-005"
+    relative-path pattern="\\.md$"     // matches "./adr-005.md"
+}

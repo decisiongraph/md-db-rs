@@ -1,0 +1,71 @@
+# Schema definition for Architecture Decision Records
+# TOML format: strict, familiar, but verbose for nesting
+
+[type.adr]
+name = "Architecture Decision Record"
+
+# Frontmatter fields
+[[type.adr.fields]]
+name = "title"
+type = "string"
+required = true
+
+[[type.adr.fields]]
+name = "status"
+type = "enum"
+required = true
+values = ["proposed", "accepted", "rejected", "deprecated", "superseded"]
+
+[[type.adr.fields]]
+name = "author"
+type = "string"
+required = true
+pattern = "^@.+"
+
+[[type.adr.fields]]
+name = "reviewers"
+type = "string[]"
+
+[[type.adr.fields]]
+name = "tags"
+type = "string[]"
+
+[[type.adr.fields]]
+name = "superseded_by"
+type = "ref"
+
+[[type.adr.fields]]
+name = "related"
+type = "ref[]"
+
+# Required sections
+[[type.adr.sections]]
+name = "Decision"
+required = true
+
+[[type.adr.sections]]
+name = "Consequences"
+required = true
+
+  [[type.adr.sections.children]]
+  name = "Positive"
+  required = true
+
+  [[type.adr.sections.children]]
+  name = "Negative"
+
+[[type.adr.sections]]
+name = "Alternatives Considered"
+
+  [[type.adr.sections.tables]]
+  required = true
+  columns = [
+    { name = "Option", type = "string", required = true },
+    { name = "Score", type = "number" },
+    { name = "Notes", type = "string" },
+  ]
+
+# Reference format config
+[ref-format]
+string-id = { pattern = '^ADR-\d+$' }
+relative-path = { pattern = '\.md$' }
