@@ -1,0 +1,19 @@
+[package]
+name = "md-db"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+description = "Markdown-as-Database library — structured documents with YAML frontmatter validated against KDL schemas"
+repository = "https://github.com/decisiongraph/md-db-rs"
+
+[dependencies]
+comrak = "0.36"
+gray_matter = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+thiserror = "2"
+walkdir = "2"
+glob = "0.3"
+kdl = "6"
+regex = "1"

@@ -162,6 +162,30 @@ pub fn find_tables<'a>(root: &'a AstNode<'a>) -> Vec<&'a AstNode<'a>> {
     tables
 }
 
+/// Get the byte range of a table node in the body string (sourcepos-based).
+pub fn table_byte_range<'a>(
+    table_node: &'a AstNode<'a>,
+    body: &str,
+) -> std::ops::Range<usize> {
+    let sourcepos = table_node.data.borrow().sourcepos;
+    let start = line_col_to_byte(body, sourcepos.start.line, 1);
+    // End at the end of the last line of the table
+    let end_line = sourcepos.end.line;
+    // Find the byte position at the end of end_line (after the newline)
+    let mut current_line = 1;
+    let mut end = body.len();
+    for (i, c) in body.char_indices() {
+        if c == '\n' {
+            if current_line == end_line {
+                end = i + 1;
+                break;
+            }
+            current_line += 1;
+        }
+    }
+    start..end
+}
+
 /// Parse a comrak Table node into our Table struct.
 pub fn parse_table_node<'a>(table_node: &'a AstNode<'a>) -> Table {
     let mut headers = Vec::new();
@@ -253,5 +277,24 @@ mod tests {
         assert_eq!(table.headers(), &["A", "B"]);
         assert_eq!(table.get_cell("A", 0), Some("1"));
         assert_eq!(table.get_cell("B", 1), Some("4"));
+    }
+
+    #[test]
+    fn test_table_byte_range() {
+        let md = "# Section\n\nSome text.\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\nMore text.\n";
+        let arena = Arena::new();
+        let mut opts = Options::default();
+        opts.extension.table = true;
+        let root = comrak::parse_document(&arena, md, &opts);
+
+        let tables = find_tables(root);
+        assert_eq!(tables.len(), 1);
+
+        let range = table_byte_range(tables[0], md);
+        let table_text = &md[range];
+        assert!(table_text.contains("| A | B |"));
+        assert!(table_text.contains("| 1 | 2 |"));
+        assert!(!table_text.contains("Some text"));
+        assert!(!table_text.contains("More text"));
     }
 }

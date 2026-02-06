@@ -1,0 +1,358 @@
+# md-db CLI — LLM reference
+
+Binary: `md-db`
+
+Markdown-as-Database CLI. Documents are markdown files with YAML frontmatter validated against a KDL schema. Schema defines types (with fields, sections, tables, content constraints), relations, and type-level metadata (folder, max_count).
+
+Document IDs are derived from filenames: `adr-001-use-postgresql.md` → `ADR-001` (prefix-NNN pattern, uppercased). Files are discovered recursively.
+
+## Output format
+
+All commands accept `--format`. Values: `text`, `json`, `compact`, `auto`.
+
+`auto` (default for validate/inspect) outputs JSON when stdout is piped (non-TTY), text on terminal. Since LLMs always pipe, `auto` gives JSON by default — no need to specify `--format json`.
+
+`compact` outputs one line per diagnostic: `path:code:severity:location:message`
+
+## Commands
+
+### inspect — single-document introspection (recommended first call)
+
+Returns frontmatter, sections, validation diagnostics, and schema type info in one JSON blob. Use this instead of separate get + validate + describe calls.
+
+```sh
+# Inspect a file
+md-db inspect FILE --schema SCHEMA
+
+# Inspect from stdin
+echo '---\ntype: adr\n...' | md-db inspect --stdin --schema SCHEMA
+
+# Force JSON (usually automatic when piped)
+md-db inspect FILE --schema SCHEMA --format json
+```
+
+JSON output shape:
+```json
+{
+  "path": "string|null",
+  "frontmatter": { ... },
+  "sections": [{"heading": "str", "level": N, "content_length": N}],
+  "diagnostics": [{"severity":"error|warning","code":"F010","message":"...","location":"...","hint":"..."}],
+  "errors": 0,
+  "warnings": 0,
+  "valid": true,
+  "schema_type": { "name":"adr", "description":"...", "fields":[...] }
+}
+```
+
+### describe — schema introspection
+
+```sh
+# Overview: list all types and relations
+md-db describe --schema SCHEMA
+
+# Full schema export as JSON (all types, fields, sections, constraints, relations, ref-formats)
+# Call this ONCE at session start to get the full schema in context
+md-db describe --schema SCHEMA --export
+
+# Single type detail
+md-db describe --schema SCHEMA --type adr
+
+# Single field detail
+md-db describe --schema SCHEMA --type adr --field status
+
+# Relations only
+md-db describe --schema SCHEMA --relations
+
+# JSON output for any mode
+md-db describe --schema SCHEMA --type adr --format json
+```
+
+`--export` JSON shape includes `folder` and `max_count` per type:
+```json
+{
+  "types": [
+    {
+      "name": "adr",
+      "description": "Architecture Decision Record",
+      "folder": "docs/architecture",
+      "fields": [
+        {"name":"title","type":"string","required":true,"description":"Short summary"},
+        {"name":"status","type":"enum","required":true,"default":"proposed","values":["proposed","accepted"]}
+      ],
+      "sections": [
+        {"name":"Decision","required":true,"description":"...","content":{"min_paragraphs":1}},
+        {"name":"Alternatives Considered","required":false,"table":{"required":false,"columns":[...]}}
+      ]
+    },
+    {
+      "name": "readme",
+      "folder": ".",
+      "max_count": 1,
+      "fields": [...]
+    }
+  ],
+  "relations": [{"name":"supersedes","inverse":"superseded_by","cardinality":"one","description":"..."}],
+  "ref_formats": [{"name":"string-id","pattern":"^ADR-\\d+$"}]
+}
+```
+
+### validate — validate documents against schema
+
+```sh
+# Validate directory (auto format = JSON when piped)
+md-db validate DIR --schema SCHEMA
+
+# Validate single doc from stdin
+echo '...' | md-db validate --stdin --schema SCHEMA
+
+# Compact: one line per diagnostic, minimal tokens
+md-db validate DIR --schema SCHEMA --format compact
+# Output: tests/fixtures/adr-003.md:R011:warning:frontmatter.superseded_by:unresolved reference "ADR-005"
+
+# With user config for @handle validation
+md-db validate DIR --schema SCHEMA --users USERS_YAML
+
+# Force text format
+md-db validate DIR --schema SCHEMA --format text
+```
+
+Diagnostic codes:
+- F000: no frontmatter
+- F001: missing type field
+- F002: unknown type
+- F010: missing required field
+- F020: type mismatch
+- F021: invalid enum value
+- F030: pattern mismatch
+- S010: missing required section
+- S020: missing required table
+- S021: missing required column
+- S030: content constraint (min paragraphs)
+- S031: list constraint (missing list or too few items)
+- S032: diagram constraint (missing diagram code block)
+- R001: ref format mismatch
+- R010: broken file reference
+- R011: unresolved reference
+- T010: type count exceeds max_count
+- U010: invalid user ref (missing @)
+- U011: unknown user/team
+
+### get — read fields, sections, tables
+
+```sh
+# Get a field value
+md-db get FILE --field status
+
+# Get full frontmatter as JSON
+md-db get FILE --frontmatter --format json
+
+# Get section content
+md-db get FILE --section Decision
+
+# Get table from section
+md-db get FILE --section "Timeline" --table 0 --format json
+
+# Get single cell
+md-db get FILE --section "Timeline" --table 0 --cell "Event,0"
+
+# Read from stdin
+echo '...' | md-db get --stdin --field title
+```
+
+### set — mutate fields, sections, tables
+
+```sh
+# Set multiple fields at once
+md-db set FILE --field status=accepted --field date=2026-02-06
+
+# Replace section content in batch
+md-db set FILE \
+  --section-set "Decision=We chose PostgreSQL for reliability." \
+  --section-set "Root Cause=DNS misconfiguration."
+
+# Single section operations
+md-db set FILE --section Decision --content "New decision text."
+md-db set FILE --section Decision --append "Additional note."
+
+# Table operations
+md-db set FILE --section Timeline --table 0 --cell "Event,0" --value "Server restart"
+md-db set FILE --section Timeline --table 0 --add-row "10:30,Alert fired,@onni"
+
+# Combine field + section mutations in one call
+md-db set FILE \
+  --field status=accepted \
+  --section-set "Decision=We will use PostgreSQL."
+
+# Dry run (print to stdout, don't write)
+md-db set FILE --field status=accepted --dry-run
+```
+
+### new — create document from schema
+
+```sh
+# Create with explicit field values
+md-db new --type adr --schema SCHEMA --field title="Use Redis" --field author=@onni
+
+# Create with --fill: expand $TODAY/$NOW and all date placeholders to real values
+md-db new --type adr --schema SCHEMA --fill --field author=@onni
+
+# Write to file
+md-db new --type adr --schema SCHEMA --fill --field author=@onni --output docs/adr-042.md
+
+# Auto-ID: scan directory for next available ID, generate output path from type folder
+md-db new --type adr --schema SCHEMA --dir docs/ --auto-id --fill --field author=@onni
+# Output: auto-id: ADR-004 → docs/docs/architecture/adr-004.md
+
+# Just get next available ID without writing
+md-db new --type adr --schema SCHEMA --dir docs/
+# Output: next-id: ADR-004
+```
+
+`--fill` expands:
+- Schema defaults: `$TODAY` → `2026-02-06`, `$NOW` → `2026-02-06T07:50:03Z`
+- Date pattern heuristics: fields with `\d{4}-\d{2}-\d{2}` patterns get real dates instead of `YYYY-MM-DD`
+
+Without `--fill`, date-pattern fields without explicit `default` get placeholder strings.
+
+### list — discover, filter, and sort documents
+
+```sh
+# List all markdown files
+md-db list DIR
+
+# Filter by frontmatter field (equals)
+md-db list DIR --field type=adr --field status=accepted
+
+# Filter by NOT equal
+md-db list DIR --field type=adr --not-field status=superseded
+
+# Filter by value in set (comma-separated)
+md-db list DIR --in "status=accepted,proposed"
+
+# Filter by substring match
+md-db list DIR --contains "title~=PostgreSQL"
+
+# Filter by field existence / absence
+md-db list DIR --has-field severity
+md-db list DIR --not-has-field resolved_at
+
+# Sort by field (prefix - for descending)
+md-db list DIR --field type=adr --sort=date
+md-db list DIR --field type=adr --sort=-date
+
+# JSON with selected fields
+md-db list DIR --field type=adr --format json --fields title,status,author
+```
+
+### refs — show forward refs and backlinks
+
+```sh
+# Forward refs from a document
+md-db refs DIR --schema SCHEMA --from ADR-001
+
+# Backlinks to a document
+md-db refs DIR --schema SCHEMA --to ADR-001
+
+# Transitive refs (default depth=1, max configurable)
+md-db refs DIR --schema SCHEMA --from ADR-001 --depth 3
+
+# JSON output
+md-db refs DIR --schema SCHEMA --from ADR-001 --format json
+```
+
+JSON output shape:
+```json
+{
+  "id": "ADR-001",
+  "direction": "from",
+  "depth": 1,
+  "refs": [
+    {"from": "ADR-001", "to": "OPP-001", "relation": "enables", "depth": 1},
+    {"from": "ADR-001", "to": "GOV-001", "relation": "triggers", "depth": 1}
+  ]
+}
+```
+
+### graph — export document link graph
+
+```sh
+# Mermaid diagram (default)
+md-db graph DIR --schema SCHEMA
+
+# DOT/graphviz format
+md-db graph DIR --schema SCHEMA --format dot
+
+# JSON (nodes + edges)
+md-db graph DIR --schema SCHEMA --format json
+
+# Filter by document type
+md-db graph DIR --schema SCHEMA --type adr
+```
+
+### deprecate — mark document as deprecated/superseded
+
+```sh
+# Mark as deprecated
+md-db deprecate FILE --schema SCHEMA
+
+# Mark as superseded by another document
+md-db deprecate FILE --schema SCHEMA --superseded-by ADR-004
+
+# Scan for backlinks that reference the deprecated doc
+md-db deprecate FILE --schema SCHEMA --dir docs/
+
+# Dry run
+md-db deprecate FILE --schema SCHEMA --dry-run
+```
+
+## Typical LLM workflow
+
+```sh
+# 1. Load full schema once at session start
+md-db describe --schema schema.kdl --export
+
+# 2. List and filter documents
+md-db list docs/ --field type=adr --in "status=accepted,proposed" --sort=-date --format json --fields title,status,date
+
+# 3. Inspect a document (frontmatter + sections + validation in one call)
+md-db inspect docs/adr-001.md --schema schema.kdl
+
+# 4. Check refs/backlinks
+md-db refs docs/ --schema schema.kdl --to ADR-001 --format json
+
+# 5. Make changes (batch fields + sections)
+md-db set docs/adr-001.md \
+  --field status=accepted \
+  --section-set "Decision=We chose PostgreSQL."
+
+# 6. Validate after changes
+md-db validate docs/ --schema schema.kdl --format compact
+
+# 7. Create new document with auto-ID
+md-db new --type adr --schema schema.kdl --dir docs/ --auto-id --fill --field title="Use Redis" --field author=@onni
+
+# 8. Deprecate old document
+md-db deprecate docs/adr-001.md --schema schema.kdl --superseded-by ADR-004 --dir docs/
+```
+
+## Schema (KDL format)
+
+Types define fields (with types, patterns, defaults, descriptions) and sections (with content/list/diagram/table constraints). Relations are global across all types.
+
+Type-level attributes:
+- `folder="path"` — default directory for documents of this type
+- `max_count=N` — maximum number of documents allowed (e.g. 1 for README.md)
+- `description="..."` — human-readable description
+
+Field types: `string`, `number`, `bool`, `enum`, `ref`, `string[]`, `ref[]`, `user`, `user[]`
+
+Default expansion: `$TODAY` → YYYY-MM-DD, `$NOW` → ISO 8601 datetime
+
+Content constraints on sections:
+- `content min-paragraphs=N` — must have N+ paragraph blocks
+- `list min-items=N` — must have a markdown list with N+ items
+- `diagram type="mermaid"` — must have a fenced code block with that language
+- `table { column ... }` — must have a markdown table with specified columns
+
+Document ID convention: files named `PREFIX-NNN-optional-slug.md` resolve to ID `PREFIX-NNN` (uppercased). Examples: `adr-001-use-postgresql.md` → `ADR-001`, `inc_002.md` → `INC-002`.

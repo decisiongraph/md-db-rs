@@ -86,6 +86,36 @@ impl Frontmatter {
     pub fn get_display(&self, path: &str) -> Option<String> {
         self.get(path).map(yaml_value_to_string)
     }
+
+    /// Construct from an existing data map.
+    pub fn from_data(data: BTreeMap<String, Value>) -> Self {
+        Self { data }
+    }
+
+    /// Get a mutable reference to the underlying data map.
+    pub fn data_mut(&mut self) -> &mut BTreeMap<String, Value> {
+        &mut self.data
+    }
+
+    /// Set a top-level field.
+    pub fn set(&mut self, key: &str, value: Value) {
+        self.data.insert(key.to_string(), value);
+    }
+
+    /// Parse a string as a YAML value and set the field.
+    pub fn set_from_str(&mut self, key: &str, raw: &str) {
+        self.set(key, parse_yaml_value(raw));
+    }
+
+    /// Remove a top-level field, returning its previous value.
+    pub fn remove(&mut self, key: &str) -> Option<Value> {
+        self.data.remove(key)
+    }
+
+    /// Serialize as YAML string (infallible for BTreeMap).
+    pub fn to_yaml_string(&self) -> String {
+        serde_yaml::to_string(&self.data).unwrap_or_default()
+    }
 }
 
 fn yaml_value_to_string(v: &Value) -> String {
@@ -101,6 +131,40 @@ fn yaml_value_to_string(v: &Value) -> String {
         Value::Mapping(_) => serde_yaml::to_string(v).unwrap_or_default(),
         Value::Tagged(tagged) => yaml_value_to_string(&tagged.value),
     }
+}
+
+/// Parse a string into a YAML value, trying bool/number/sequence before falling back to string.
+pub fn parse_yaml_value(s: &str) -> Value {
+    let trimmed = s.trim();
+
+    // Booleans
+    match trimmed {
+        "true" => return Value::Bool(true),
+        "false" => return Value::Bool(false),
+        _ => {}
+    }
+
+    // Integer
+    if let Ok(n) = trimmed.parse::<i64>() {
+        return Value::Number(n.into());
+    }
+
+    // Float (only if contains '.')
+    if trimmed.contains('.') {
+        if let Ok(f) = trimmed.parse::<f64>() {
+            return Value::Number(serde_yaml::Number::from(f));
+        }
+    }
+
+    // YAML sequence syntax [a, b, c]
+    if trimmed.starts_with('[') && trimmed.ends_with(']') {
+        if let Ok(val) = serde_yaml::from_str::<Value>(trimmed) {
+            return val;
+        }
+    }
+
+    // Default: string
+    Value::String(s.to_string())
 }
 
 fn yaml_to_json(v: &Value) -> serde_json::Value {
@@ -183,5 +247,59 @@ mod tests {
         let (fm, _) = Frontmatter::parse(content).unwrap();
         assert!(fm.has_field("title"));
         assert!(!fm.has_field("missing"));
+    }
+
+    #[test]
+    fn test_set_and_remove() {
+        let content = "---\ntitle: Test\n---\nbody";
+        let (mut fm, _) = Frontmatter::parse(content).unwrap();
+        fm.set("status", Value::String("accepted".into()));
+        assert_eq!(fm.get_display("status").unwrap(), "accepted");
+        let removed = fm.remove("status");
+        assert!(removed.is_some());
+        assert!(!fm.has_field("status"));
+    }
+
+    #[test]
+    fn test_set_from_str() {
+        let mut fm = Frontmatter::from_data(BTreeMap::new());
+        fm.set_from_str("count", "42");
+        fm.set_from_str("active", "true");
+        fm.set_from_str("name", "hello");
+        fm.set_from_str("tags", "[a, b]");
+        assert!(matches!(fm.get("count").unwrap(), Value::Number(_)));
+        assert!(matches!(fm.get("active").unwrap(), Value::Bool(true)));
+        assert_eq!(fm.get_display("name").unwrap(), "hello");
+        assert!(matches!(fm.get("tags").unwrap(), Value::Sequence(_)));
+    }
+
+    #[test]
+    fn test_from_data() {
+        let mut data = BTreeMap::new();
+        data.insert("type".into(), Value::String("adr".into()));
+        let fm = Frontmatter::from_data(data);
+        assert_eq!(fm.get_display("type").unwrap(), "adr");
+    }
+
+    #[test]
+    fn test_to_yaml_string() {
+        let content = "---\ntitle: Test\nstatus: ok\n---\nbody";
+        let (fm, _) = Frontmatter::parse(content).unwrap();
+        let yaml = fm.to_yaml_string();
+        assert!(yaml.contains("title:"));
+        assert!(yaml.contains("status:"));
+    }
+
+    #[test]
+    fn test_parse_yaml_value() {
+        assert_eq!(parse_yaml_value("true"), Value::Bool(true));
+        assert_eq!(parse_yaml_value("false"), Value::Bool(false));
+        assert!(matches!(parse_yaml_value("42"), Value::Number(_)));
+        assert!(matches!(parse_yaml_value("3.14"), Value::Number(_)));
+        assert_eq!(
+            parse_yaml_value("hello"),
+            Value::String("hello".into())
+        );
+        assert!(matches!(parse_yaml_value("[a, b]"), Value::Sequence(_)));
     }
 }

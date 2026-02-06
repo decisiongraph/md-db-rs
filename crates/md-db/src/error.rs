@@ -31,6 +31,27 @@ pub enum Error {
 
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+
+    #[error("schema parse error: {0}")]
+    SchemaParse(String),
+
+    #[error("failed to write file: {0}")]
+    WriteFailed(PathBuf),
+
+    #[error("no file path set on document")]
+    NoPath,
+
+    #[error("invalid field value: {0}")]
+    InvalidFieldValue(String),
+
+    #[error("type not found in schema: {0}")]
+    TypeNotFound(String),
+
+    #[error("column not found: {0}")]
+    ColumnNotFound(String),
+
+    #[error("row {row} out of bounds (max {max})")]
+    RowOutOfBounds { row: usize, max: usize },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

@@ -10,8 +10,16 @@ use crate::frontmatter::Frontmatter;
 pub enum Filter {
     /// Field must equal value.
     FieldEquals { key: String, value: String },
+    /// Field must NOT equal value.
+    FieldNotEquals { key: String, value: String },
+    /// Field value must contain substring.
+    FieldContains { key: String, value: String },
+    /// Field value must be one of these values (comma-separated in CLI).
+    FieldIn { key: String, values: Vec<String> },
     /// Field must exist.
     HasField(String),
+    /// Field must NOT exist.
+    NotHasField(String),
 }
 
 /// Discover markdown files in a directory with optional filtering.
@@ -83,8 +91,32 @@ fn check_filters(fm: &Frontmatter, filters: &[Filter]) -> bool {
                     _ => return false,
                 }
             }
+            Filter::FieldNotEquals { key, value } => {
+                match fm.get_display(key) {
+                    Some(v) if v != *value => {}
+                    None => {} // field absent counts as "not equal"
+                    _ => return false,
+                }
+            }
+            Filter::FieldContains { key, value } => {
+                match fm.get_display(key) {
+                    Some(v) if v.contains(value.as_str()) => {}
+                    _ => return false,
+                }
+            }
+            Filter::FieldIn { key, values } => {
+                match fm.get_display(key) {
+                    Some(v) if values.iter().any(|allowed| *allowed == v) => {}
+                    _ => return false,
+                }
+            }
             Filter::HasField(key) => {
                 if !fm.has_field(key) {
+                    return false;
+                }
+            }
+            Filter::NotHasField(key) => {
+                if fm.has_field(key) {
                     return false;
                 }
             }

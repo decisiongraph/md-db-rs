@@ -69,6 +69,65 @@ impl Table {
         Value::Array(arr)
     }
 
+    /// Set a cell value by column name and row index (0-based).
+    pub fn set_cell(&mut self, col: &str, row: usize, value: String) -> Result<()> {
+        let col_idx = self
+            .headers
+            .iter()
+            .position(|h| h == col)
+            .ok_or_else(|| Error::ColumnNotFound(col.to_string()))?;
+        let max = self.rows.len();
+        let r = self
+            .rows
+            .get_mut(row)
+            .ok_or(Error::RowOutOfBounds { row, max })?;
+        if col_idx < r.len() {
+            r[col_idx] = value;
+        }
+        Ok(())
+    }
+
+    /// Add a row. Pads or truncates to match header count.
+    pub fn add_row(&mut self, values: Vec<String>) {
+        let mut row = values;
+        row.resize(self.headers.len(), String::new());
+        row.truncate(self.headers.len());
+        self.rows.push(row);
+    }
+
+    /// Render as GFM markdown table.
+    pub fn to_markdown(&self) -> String {
+        if self.headers.is_empty() {
+            return String::new();
+        }
+
+        let mut out = String::new();
+
+        // Header row
+        out.push_str("| ");
+        out.push_str(&self.headers.join(" | "));
+        out.push_str(" |\n");
+
+        // Separator
+        out.push_str("|");
+        for _ in &self.headers {
+            out.push_str("---|");
+        }
+        out.push('\n');
+
+        // Data rows
+        for row in &self.rows {
+            out.push_str("| ");
+            let cells: Vec<&str> = (0..self.headers.len())
+                .map(|i| row.get(i).map(|s| s.as_str()).unwrap_or(""))
+                .collect();
+            out.push_str(&cells.join(" | "));
+            out.push_str(" |\n");
+        }
+
+        out
+    }
+
     /// Format as aligned text table.
     pub fn to_text(&self) -> String {
         if self.headers.is_empty() {
@@ -161,5 +220,43 @@ mod tests {
         let json = t.to_json();
         assert_eq!(json[0]["Name"], "Alice");
         assert_eq!(json[1]["Score"], "6");
+    }
+
+    #[test]
+    fn test_set_cell() {
+        let mut t = sample_table();
+        t.set_cell("Score", 0, "10".into()).unwrap();
+        assert_eq!(t.get_cell("Score", 0), Some("10"));
+
+        // Column not found
+        assert!(t.set_cell("Missing", 0, "x".into()).is_err());
+        // Row out of bounds
+        assert!(t.set_cell("Score", 99, "x".into()).is_err());
+    }
+
+    #[test]
+    fn test_add_row() {
+        let mut t = sample_table();
+        t.add_row(vec!["Carol".into(), "9".into()]);
+        assert_eq!(t.rows().len(), 3);
+        assert_eq!(t.get_cell("Name", 2), Some("Carol"));
+
+        // Pad short row
+        t.add_row(vec!["Dave".into()]);
+        assert_eq!(t.get_cell("Score", 3), Some(""));
+
+        // Truncate long row
+        t.add_row(vec!["Eve".into(), "7".into(), "extra".into()]);
+        assert_eq!(t.rows()[4].len(), 2);
+    }
+
+    #[test]
+    fn test_to_markdown() {
+        let t = sample_table();
+        let md = t.to_markdown();
+        assert!(md.contains("| Name | Score |"));
+        assert!(md.contains("|---|---|"));
+        assert!(md.contains("| Alice | 8 |"));
+        assert!(md.contains("| Bob | 6 |"));
     }
 }

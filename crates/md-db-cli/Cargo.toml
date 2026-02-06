@@ -1,0 +1,16 @@
+[package]
+name = "md-db-cli"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+description = "Markdown-as-Database CLI — structured documents with YAML frontmatter validated against KDL schemas"
+repository = "https://github.com/decisiongraph/md-db-rs"
+
+[[bin]]
+name = "md-db"
+path = "src/main.rs"
+
+[dependencies]
+md-db = { path = "../md-db" }
+clap = { version = "4", features = ["derive"] }
+serde_json = "1"

@@ -7,6 +7,8 @@ pub enum OutputFormat {
     Text,
     Markdown,
     Json,
+    /// One-liner per diagnostic: `code:severity:location:message`
+    Compact,
 }
 
 impl OutputFormat {
@@ -15,10 +17,23 @@ impl OutputFormat {
             "text" => Some(Self::Text),
             "markdown" | "md" => Some(Self::Markdown),
             "json" => Some(Self::Json),
+            "compact" => Some(Self::Compact),
+            "auto" => Some(Self::auto()),
             _ => None,
         }
     }
+
+    /// Auto-detect: JSON when stdout is not a TTY, text otherwise.
+    pub fn auto() -> Self {
+        if std::io::stdout().is_terminal() {
+            Self::Text
+        } else {
+            Self::Json
+        }
+    }
 }
+
+use std::io::IsTerminal;
 
 /// Format a frontmatter field value for output.
 pub fn format_field_value(val: &serde_yaml::Value, format: OutputFormat) -> String {
@@ -35,10 +50,10 @@ pub fn format_field_value(val: &serde_yaml::Value, format: OutputFormat) -> Stri
 pub fn format_section(content: &str, format: OutputFormat) -> String {
     match format {
         OutputFormat::Markdown => content.to_string(),
-        OutputFormat::Text => strip_markdown(content),
         OutputFormat::Json => {
             serde_json::to_string(&Value::String(content.to_string())).unwrap_or_default()
         }
+        _ => strip_markdown(content),
     }
 }
 
@@ -110,7 +125,7 @@ fn strip_markdown(md: &str) -> String {
     crate::ast_util::collect_text_blocks(root)
 }
 
-fn yaml_value_display(v: &serde_yaml::Value) -> String {
+pub fn yaml_value_display(v: &serde_yaml::Value) -> String {
     match v {
         serde_yaml::Value::Null => "null".to_string(),
         serde_yaml::Value::Bool(b) => b.to_string(),

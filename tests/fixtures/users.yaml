@@ -1,0 +1,38 @@
+users:
+  onni:
+    name: Onni Hakala
+    email: onni@flaky.build
+    teams: [platform, leadership]
+    role: staff-engineer
+
+  alice:
+    name: Alice Smith
+    email: alice@example.com
+    teams: [platform]
+
+  bob:
+    name: Bob Jones
+    email: bob@example.com
+    teams: [security]
+
+  cto:
+    name: CTO
+    email: cto@example.com
+    teams: [leadership]
+
+teams:
+  platform:
+    name: Platform Team
+    slack: "#platform"
+    lead: onni
+
+  security:
+    name: Security Team
+    slack: "#security"
+
+  leadership:
+    name: Leadership
+
+  engineering:
+    name: Engineering
+    teams: [platform, security]

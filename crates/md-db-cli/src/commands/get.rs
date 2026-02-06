@@ -1,14 +1,18 @@
 use std::path::PathBuf;
 
 use clap::Args;
-use markdown_all::document::Document;
-use markdown_all::error::Error;
-use markdown_all::output::{self, OutputFormat};
+use md_db::document::Document;
+use md_db::error::Error;
+use md_db::output::{self, OutputFormat};
 
 #[derive(Debug, Args)]
 pub struct GetArgs {
-    /// Path to the markdown file
-    pub file: PathBuf,
+    /// Path to the markdown file (omit when using --stdin)
+    pub file: Option<PathBuf>,
+
+    /// Read document from stdin
+    #[arg(long)]
+    pub stdin: bool,
 
     /// Get a frontmatter field by key (supports dotted paths like "links.ref")
     #[arg(long)]
@@ -36,7 +40,17 @@ pub struct GetArgs {
 }
 
 pub fn run(args: &GetArgs) -> Result<(), Box<dyn std::error::Error>> {
-    let doc = Document::from_file(&args.file)?;
+    let doc = if args.stdin {
+        let mut content = String::new();
+        std::io::Read::read_to_string(&mut std::io::stdin(), &mut content)?;
+        Document::from_str(&content)?
+    } else {
+        let file = args
+            .file
+            .as_ref()
+            .ok_or("file argument required when not using --stdin")?;
+        Document::from_file(file)?
+    };
     let format = OutputFormat::from_str(&args.format).unwrap_or(OutputFormat::Markdown);
 
     // --field: return bare frontmatter value
@@ -86,7 +100,6 @@ pub fn run(args: &GetArgs) -> Result<(), Box<dyn std::error::Error>> {
 
         // Section content
         match format {
-            OutputFormat::Text => println!("{}", section.text()),
             OutputFormat::Json => {
                 let json = serde_json::json!({
                     "heading": section.heading,
@@ -96,6 +109,7 @@ pub fn run(args: &GetArgs) -> Result<(), Box<dyn std::error::Error>> {
                 println!("{}", serde_json::to_string_pretty(&json)?);
             }
             OutputFormat::Markdown => print!("{}", section.raw),
+            _ => println!("{}", section.text()),
         }
         return Ok(());
     }
