@@ -11,4 +11,5 @@ pub mod section;
 pub mod table;
 pub mod template;
 pub mod users;
+pub mod search;
 pub mod validation;

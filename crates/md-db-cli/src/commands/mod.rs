@@ -7,5 +7,6 @@ pub mod inspect;
 pub mod list;
 pub mod new;
 pub mod refs;
+pub mod search;
 pub mod set;
 pub mod validate;
