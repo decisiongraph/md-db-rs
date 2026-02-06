@@ -17,4 +17,8 @@ walkdir = "2"
 glob = "0.3"
 kdl = "6"
 regex = "1"
+htmlescape = "0.3"
 ignore = "0.4"
+
+[dev-dependencies]
+tempfile = "3"

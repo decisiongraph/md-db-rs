@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use ignore::WalkBuilder;
+use walkdir::WalkDir;
 
 use crate::error::Result;
 use crate::frontmatter::Frontmatter;
@@ -132,6 +133,40 @@ fn check_filters(fm: &Frontmatter, filters: &[Filter]) -> bool {
         }
     }
     true
+}
+
+
+/// Discover singleton files matching schema type patterns in a directory.
+/// Returns files that match any singleton type's match pattern.
+pub fn discover_singleton_files(
+    dir: impl AsRef<Path>,
+    singleton_patterns: &[&str],
+) -> Result<Vec<PathBuf>> {
+    if singleton_patterns.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let dir = dir.as_ref();
+    let mut results = Vec::new();
+
+    for entry in WalkDir::new(dir).follow_links(true).into_iter().flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let file_name = match path.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n,
+            None => continue,
+        };
+
+        if singleton_patterns.iter().any(|p| *p == file_name) {
+            results.push(path.to_path_buf());
+        }
+    }
+
+    results.sort();
+    Ok(results)
 }
 
 #[cfg(test)]
