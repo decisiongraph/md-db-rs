@@ -35,7 +35,7 @@ pub struct DocGraph {
 impl DocGraph {
     /// Build a graph from all markdown files in a directory.
     pub fn build(dir: impl AsRef<Path>, schema: &Schema) -> Result<Self> {
-        let files = crate::discovery::discover_files(&dir, None, &[])?;
+        let files = crate::discovery::discover_files(&dir, None, &[], false)?;
         let relation_names = schema.all_relation_field_names();
 
         let mut nodes = BTreeMap::new();
