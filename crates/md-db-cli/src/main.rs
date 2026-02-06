@@ -31,6 +31,8 @@ enum Commands {
     Refs(commands::refs::RefsArgs),
     /// Update fields, sections, or table cells in a markdown file
     Set(commands::set::SetArgs),
+    /// Show document set health overview (counts, validation, graph stats)
+    Stats(commands::stats::StatsArgs),
 }
 
 fn main() {
@@ -47,6 +49,7 @@ fn main() {
         Commands::New(args) => commands::new::run(args),
         Commands::Refs(args) => commands::refs::run(args),
         Commands::Set(args) => commands::set::run(args),
+        Commands::Stats(args) => commands::stats::run(args),
     };
 
     if let Err(e) = result {
