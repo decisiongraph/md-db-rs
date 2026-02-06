@@ -19,6 +19,8 @@ enum Commands {
     Get(commands::get::GetArgs),
     /// Export the document link graph as mermaid, DOT, or JSON
     Graph(commands::graph::GraphArgs),
+    /// Scaffold a new md-db project with schema.kdl and directory structure
+    Init(commands::init::InitArgs),
     /// Inspect a document: frontmatter + sections + validation in one call
     Inspect(commands::inspect::InspectArgs),
     /// List and filter markdown files by frontmatter
@@ -41,6 +43,7 @@ fn main() {
         Commands::Describe(args) => commands::describe::run(args),
         Commands::Get(args) => commands::get::run(args),
         Commands::Graph(args) => commands::graph::run(args),
+        Commands::Init(args) => commands::init::run(args),
         Commands::Inspect(args) => commands::inspect::run(args),
         Commands::List(args) => commands::list::run(args),
         Commands::Validate(args) => commands::validate::run(args),

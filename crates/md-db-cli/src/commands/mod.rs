@@ -2,6 +2,7 @@ pub mod deprecate;
 pub mod describe;
 pub mod get;
 pub mod graph;
+pub mod init;
 pub mod inspect;
 pub mod list;
 pub mod new;
