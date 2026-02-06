@@ -506,6 +506,7 @@ dependencies = [
  "clap",
  "md-db",
  "serde_json",
+ "serde_yaml",
 ]
 
 [[package]]

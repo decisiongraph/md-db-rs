@@ -29,6 +29,8 @@ enum Commands {
     New(commands::new::NewArgs),
     /// Show forward refs or backlinks for a document
     Refs(commands::refs::RefsArgs),
+    /// Rename a document ID and cascade-update all references
+    Rename(commands::rename::RenameArgs),
     /// Update fields, sections, or table cells in a markdown file
     Set(commands::set::SetArgs),
 }
@@ -46,6 +48,7 @@ fn main() {
         Commands::Validate(args) => commands::validate::run(args),
         Commands::New(args) => commands::new::run(args),
         Commands::Refs(args) => commands::refs::run(args),
+        Commands::Rename(args) => commands::rename::run(args),
         Commands::Set(args) => commands::set::run(args),
     };
 
