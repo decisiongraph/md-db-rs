@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use regex::{Regex, RegexBuilder};
 
 use crate::document::Document;
-use comrak::{Arena, Options};
+use comrak::Arena;
 use comrak::nodes::NodeValue;
 
 use crate::schema::{ContentDef, DiagramDef, FieldDef, FieldType, ListDef, Schema, SectionDef, TableDef, TypeDef};
@@ -779,7 +779,7 @@ fn validate_content_constraint(
     diags: &mut Vec<Diagnostic>,
 ) {
     let arena = Arena::new();
-    let opts = Options::default();
+    let opts = comrak::Options::default();
     let root = comrak::parse_document(&arena, &section.content, &opts);
 
     let paragraph_count = root
@@ -809,7 +809,7 @@ fn validate_list_constraint(
     diags: &mut Vec<Diagnostic>,
 ) {
     let arena = Arena::new();
-    let opts = Options::default();
+    let opts = comrak::Options::default();
     let root = comrak::parse_document(&arena, &section.content, &opts);
 
     let lists: Vec<_> = root
@@ -861,7 +861,7 @@ fn validate_diagram_constraint(
     diags: &mut Vec<Diagnostic>,
 ) {
     let arena = Arena::new();
-    let opts = Options::default();
+    let opts = comrak::Options::default();
     let root = comrak::parse_document(&arena, &section.content, &opts);
 
     let code_blocks: Vec<String> = root

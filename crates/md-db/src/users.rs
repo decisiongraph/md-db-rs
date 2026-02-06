@@ -104,11 +104,6 @@ impl UserConfig {
         }
     }
 
-    /// Check if a reference is a valid user or team.
-    pub fn is_valid_user_or_team(&self, reference: &str) -> bool {
-        self.is_valid_ref(reference)
-    }
-
     /// Get all user handles as `@handle`.
     pub fn all_user_handles(&self) -> Vec<String> {
         self.users.keys().map(|h| format!("@{h}")).collect()

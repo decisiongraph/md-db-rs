@@ -48,7 +48,7 @@ fn frontmatter_table(doc: &Document) -> String {
     );
 
     for (key, val) in fm.data() {
-        let display = crate::output::yaml_value_display(val);
+        let display = crate::frontmatter::yaml_value_to_string(val);
         html.push_str(&format!(
             "<tr><td>{}</td><td>{}</td></tr>\n",
             htmlescape::encode_minimal(key),

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use comrak::{Arena, Options};
+use comrak::Arena;
 use serde::Serialize;
 use walkdir::WalkDir;
 
@@ -182,8 +182,7 @@ fn search_body(
     matches: &mut Vec<Match>,
 ) {
     let arena = Arena::new();
-    let mut opts = Options::default();
-    opts.extension.table = true;
+    let opts = ast_util::comrak_opts();
     let root = comrak::parse_document(&arena, body, &opts);
 
     // Build section map: for each line in body, what section heading is it in?

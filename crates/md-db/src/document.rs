@@ -1,7 +1,7 @@
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use comrak::{Arena, Options};
+use comrak::Arena;
 use serde_yaml::Value;
 
 use crate::ast_util;
@@ -50,7 +50,7 @@ impl Document {
     /// Get a section by heading text (case-insensitive exact match).
     pub fn get_section(&self, heading: &str) -> Result<Section> {
         let arena = Arena::new();
-        let opts = self.comrak_opts();
+        let opts = ast_util::comrak_opts();
         let root = comrak::parse_document(&arena, &self.body, &opts);
 
         let heading_node = ast_util::find_heading_by_text(root, heading)
@@ -91,7 +91,7 @@ impl Document {
     /// Get all top-level sections (headings at the minimum level found in the doc).
     pub fn sections(&self) -> Vec<Section> {
         let arena = Arena::new();
-        let opts = self.comrak_opts();
+        let opts = ast_util::comrak_opts();
         let root = comrak::parse_document(&arena, &self.body, &opts);
 
         // Find minimum heading level to determine "top-level"
@@ -197,7 +197,7 @@ impl Document {
     pub fn replace_section_content(&mut self, heading: &str, new_content: &str) -> Result<()> {
         let range = {
             let arena = Arena::new();
-            let opts = self.comrak_opts();
+            let opts = ast_util::comrak_opts();
             let root = comrak::parse_document(&arena, &self.body, &opts);
             let heading_node = ast_util::find_heading_by_text(root, heading)
                 .ok_or_else(|| Error::SectionNotFound(heading.to_string()))?;
@@ -211,7 +211,7 @@ impl Document {
     pub fn append_to_section(&mut self, heading: &str, content: &str) -> Result<()> {
         let range = {
             let arena = Arena::new();
-            let opts = self.comrak_opts();
+            let opts = ast_util::comrak_opts();
             let root = comrak::parse_document(&arena, &self.body, &opts);
             let heading_node = ast_util::find_heading_by_text(root, heading)
                 .ok_or_else(|| Error::SectionNotFound(heading.to_string()))?;
@@ -295,7 +295,7 @@ impl Document {
         table_idx: usize,
     ) -> Result<(Range<usize>, Table)> {
         let arena = Arena::new();
-        let opts = self.comrak_opts();
+        let opts = ast_util::comrak_opts();
         let root = comrak::parse_document(&arena, &self.body, &opts);
 
         let heading_node = ast_util::find_heading_by_text(root, heading)
@@ -322,11 +322,6 @@ impl Document {
         Ok((range, table))
     }
 
-    fn comrak_opts(&self) -> Options<'_> {
-        let mut opts = Options::default();
-        opts.extension.table = true;
-        opts
-    }
 }
 
 #[cfg(test)]

@@ -4,7 +4,7 @@ use serde::Serialize;
 
 use crate::document::Document;
 use crate::error::Result;
-use crate::output::yaml_value_display;
+use crate::frontmatter::yaml_value_to_string as yaml_value_display;
 
 /// Kind of change for a frontmatter field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

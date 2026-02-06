@@ -170,18 +170,37 @@ impl DocGraph {
     /// Transitive forward refs from a document up to a depth limit.
     /// Returns (depth, edge) pairs.
     pub fn refs_from_transitive(&self, id: &str, max_depth: usize) -> Vec<(usize, &DocEdge)> {
+        self.transitive_walk(id, max_depth, |g, id| g.refs_from(id), |e| &e.to)
+    }
+
+    /// Transitive backlinks to a document up to a depth limit.
+    pub fn refs_to_transitive(&self, id: &str, max_depth: usize) -> Vec<(usize, &DocEdge)> {
+        self.transitive_walk(id, max_depth, |g, id| g.refs_to(id), |e| &e.from)
+    }
+
+    /// Generic BFS walk collecting edges transitively.
+    /// `get_edges` returns edges for a given node ID.
+    /// `next_id` extracts the ID to follow from an edge.
+    fn transitive_walk<'a>(
+        &'a self,
+        id: &str,
+        max_depth: usize,
+        get_edges: impl Fn(&'a Self, &str) -> Vec<&'a DocEdge>,
+        next_id: impl Fn(&DocEdge) -> &String,
+    ) -> Vec<(usize, &'a DocEdge)> {
         let mut result = Vec::new();
         let mut visited = HashSet::new();
-        let mut queue = vec![(id.to_uppercase(), 0usize)];
+        let mut queue = VecDeque::new();
+        queue.push_back((id.to_uppercase(), 0usize));
 
-        while let Some((current, depth)) = queue.pop() {
+        while let Some((current, depth)) = queue.pop_front() {
             if depth >= max_depth {
                 continue;
             }
-            for edge in self.refs_from(&current) {
+            for edge in get_edges(self, &current) {
                 if visited.insert((edge.from.clone(), edge.to.clone(), edge.relation.clone())) {
                     result.push((depth + 1, edge));
-                    queue.push((edge.to.clone(), depth + 1));
+                    queue.push_back((next_id(edge).clone(), depth + 1));
                 }
             }
         }
@@ -189,37 +208,28 @@ impl DocGraph {
         result
     }
 
-    /// Transitive backlinks to a document up to a depth limit.
-    pub fn refs_to_transitive(&self, id: &str, max_depth: usize) -> Vec<(usize, &DocEdge)> {
-        let mut result = Vec::new();
-        let mut visited = HashSet::new();
-        let mut queue = vec![(id.to_uppercase(), 0usize)];
-
-        while let Some((current, depth)) = queue.pop() {
-            if depth >= max_depth {
-                continue;
-            }
-            for edge in self.refs_to(&current) {
-                if visited.insert((edge.from.clone(), edge.to.clone(), edge.relation.clone())) {
-                    result.push((depth + 1, edge));
-                    queue.push((edge.from.clone(), depth + 1));
-                }
-            }
+    /// Collect node IDs matching the filter type, or all node IDs if no filter.
+    fn active_ids(&self, filter_type: Option<&str>) -> HashSet<&str> {
+        if let Some(ft) = filter_type {
+            self.nodes
+                .iter()
+                .filter(|(_, n)| n.doc_type.as_deref() == Some(ft))
+                .map(|(id, _)| id.as_str())
+                .collect()
+        } else {
+            self.nodes.keys().map(|s| s.as_str()).collect()
         }
-
-        result
     }
 
     /// Export graph as mermaid diagram.
     pub fn to_mermaid(&self, filter_type: Option<&str>) -> String {
         let mut out = String::from("graph LR\n");
+        let active_ids = self.active_ids(filter_type);
 
         // Node declarations
         for (id, node) in &self.nodes {
-            if let Some(ft) = filter_type {
-                if node.doc_type.as_deref() != Some(ft) {
-                    continue;
-                }
+            if !active_ids.contains(id.as_str()) {
+                continue;
             }
             let label = node
                 .title
@@ -237,21 +247,10 @@ impl DocGraph {
         }
 
         // Edges
-        let active_ids: HashSet<&str> = if let Some(ft) = filter_type {
-            self.nodes
-                .iter()
-                .filter(|(_, n)| n.doc_type.as_deref() == Some(ft))
-                .map(|(id, _)| id.as_str())
-                .collect()
-        } else {
-            self.nodes.keys().map(|s| s.as_str()).collect()
-        };
-
         for edge in &self.edges {
             if !active_ids.contains(edge.from.as_str()) && filter_type.is_some() {
                 continue;
             }
-            // Only show edges where both endpoints are in scope, or target is external
             let label = &edge.relation;
             out.push_str(&format!(
                 "  {} -->|{}| {}\n",
@@ -265,12 +264,11 @@ impl DocGraph {
     /// Export graph as DOT (graphviz) format.
     pub fn to_dot(&self, filter_type: Option<&str>) -> String {
         let mut out = String::from("digraph docs {\n  rankdir=LR;\n  node [shape=box];\n\n");
+        let active_ids = self.active_ids(filter_type);
 
         for (id, node) in &self.nodes {
-            if let Some(ft) = filter_type {
-                if node.doc_type.as_deref() != Some(ft) {
-                    continue;
-                }
+            if !active_ids.contains(id.as_str()) {
+                continue;
             }
             let label = node.title.as_deref().unwrap_or(id.as_str());
             let style = if node.status.as_deref() == Some("deprecated")
@@ -284,16 +282,6 @@ impl DocGraph {
         }
 
         out.push('\n');
-
-        let active_ids: HashSet<&str> = if let Some(ft) = filter_type {
-            self.nodes
-                .iter()
-                .filter(|(_, n)| n.doc_type.as_deref() == Some(ft))
-                .map(|(id, _)| id.as_str())
-                .collect()
-        } else {
-            self.nodes.keys().map(|s| s.as_str()).collect()
-        };
 
         for edge in &self.edges {
             if !active_ids.contains(edge.from.as_str()) && filter_type.is_some() {

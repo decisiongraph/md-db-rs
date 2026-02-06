@@ -118,7 +118,7 @@ impl Frontmatter {
     }
 }
 
-fn yaml_value_to_string(v: &Value) -> String {
+pub fn yaml_value_to_string(v: &Value) -> String {
     match v {
         Value::Null => "null".to_string(),
         Value::Bool(b) => b.to_string(),
@@ -167,7 +167,7 @@ pub fn parse_yaml_value(s: &str) -> Value {
     Value::String(s.to_string())
 }
 
-fn yaml_to_json(v: &Value) -> serde_json::Value {
+pub fn yaml_to_json(v: &Value) -> serde_json::Value {
     match v {
         Value::Null => serde_json::Value::Null,
         Value::Bool(b) => serde_json::Value::Bool(*b),
@@ -189,12 +189,12 @@ fn yaml_to_json(v: &Value) -> serde_json::Value {
         Value::Mapping(map) => {
             let obj: serde_json::Map<String, serde_json::Value> = map
                 .iter()
-                .filter_map(|(k, v)| {
+                .map(|(k, v)| {
                     let key = match k {
                         Value::String(s) => s.clone(),
                         other => yaml_value_to_string(other),
                     };
-                    Some((key, yaml_to_json(v)))
+                    (key, yaml_to_json(v))
                 })
                 .collect();
             serde_json::Value::Object(obj)

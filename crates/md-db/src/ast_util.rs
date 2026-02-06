@@ -3,6 +3,14 @@ use comrak::{Arena, Options};
 
 use crate::table::Table;
 
+/// Shared comrak options with table extension enabled.
+/// Most markdown parsing in the codebase needs this configuration.
+pub fn comrak_opts() -> Options<'static> {
+    let mut opts = Options::default();
+    opts.extension.table = true;
+    opts
+}
+
 /// Collect plain text from a node (inline only, for heading text etc).
 pub fn collect_text<'a>(node: &'a AstNode<'a>) -> String {
     let mut text = String::new();
@@ -26,25 +34,10 @@ fn collect_text_inner<'a>(node: &'a AstNode<'a>, out: &mut String) {
 pub fn collect_text_blocks<'a>(node: &'a AstNode<'a>) -> String {
     let mut parts = Vec::new();
     for child in node.children() {
-        match &child.data.borrow().value {
-            NodeValue::Paragraph
-            | NodeValue::Heading(_)
-            | NodeValue::CodeBlock(_)
-            | NodeValue::List(_)
-            | NodeValue::Table(_) => {
-                let text = collect_text(child);
-                let trimmed = text.trim();
-                if !trimmed.is_empty() {
-                    parts.push(trimmed.to_string());
-                }
-            }
-            _ => {
-                let text = collect_text(child);
-                let trimmed = text.trim();
-                if !trimmed.is_empty() {
-                    parts.push(trimmed.to_string());
-                }
-            }
+        let text = collect_text(child);
+        let trimmed = text.trim();
+        if !trimmed.is_empty() {
+            parts.push(trimmed.to_string());
         }
     }
     parts.join("\n\n")
@@ -219,8 +212,7 @@ pub fn parse_table_node<'a>(table_node: &'a AstNode<'a>) -> Table {
 /// Parse markdown body and return all link URLs found in the AST.
 pub fn extract_links(body: &str) -> Vec<String> {
     let arena = Arena::new();
-    let mut opts = Options::default();
-    opts.extension.table = true;
+    let opts = comrak_opts();
     let root = comrak::parse_document(&arena, body, &opts);
     let mut links = Vec::new();
     for node in root.descendants() {

@@ -1,4 +1,4 @@
-use comrak::{Arena, Options};
+use comrak::Arena;
 
 use crate::ast_util;
 use crate::table::Table;
@@ -26,8 +26,7 @@ impl Section {
     /// Parse tables within this section's content.
     pub fn tables(&self) -> Vec<Table> {
         let arena = Arena::new();
-        let mut opts = Options::default();
-        opts.extension.table = true;
+        let opts = ast_util::comrak_opts();
         let root = comrak::parse_document(&arena, &self.content, &opts);
         ast_util::find_tables(root)
             .into_iter()
@@ -38,8 +37,7 @@ impl Section {
     /// Get subsections (headings one level deeper within this section).
     pub fn subsections(&self) -> Vec<Section> {
         let arena = Arena::new();
-        let mut opts = Options::default();
-        opts.extension.table = true;
+        let opts = ast_util::comrak_opts();
         let root = comrak::parse_document(&arena, &self.content, &opts);
 
         let sub_level = self.level + 1;
@@ -61,7 +59,7 @@ impl Section {
     /// Strip markdown syntax and return plain text with block structure preserved.
     pub fn text(&self) -> String {
         let arena = Arena::new();
-        let opts = Options::default();
+        let opts = comrak::Options::default();
         let root = comrak::parse_document(&arena, &self.content, &opts);
         ast_util::collect_text_blocks(root)
     }

@@ -43,7 +43,7 @@ impl DocCache {
         }
         let data = std::fs::read_to_string(path)?;
         let entries: HashMap<PathBuf, CacheEntry> =
-            serde_json::from_str(&data).map_err(|e| Error::Json(e))?;
+            serde_json::from_str(&data).map_err(Error::Json)?;
         Ok(Self {
             entries,
             dirty: false,
@@ -75,14 +75,7 @@ impl DocCache {
             Err(_) => return true,
         };
 
-        let mtime_secs = meta
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-
-        entry.mtime_secs != mtime_secs || entry.size != meta.len()
+        entry.mtime_secs != mtime_secs(&meta) || entry.size != meta.len()
     }
 
     /// Remove the cache entry for a path.
@@ -101,14 +94,6 @@ impl DocCache {
 
         let content = std::fs::read_to_string(path)?;
         let meta = std::fs::metadata(path)?;
-
-        let mtime_secs = meta
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-
         let content_hash = simple_hash(&content);
 
         let frontmatter = match Frontmatter::try_parse(&content) {
@@ -125,7 +110,7 @@ impl DocCache {
         let entry = CacheEntry {
             content_hash,
             frontmatter,
-            mtime_secs,
+            mtime_secs: mtime_secs(&meta),
             size: meta.len(),
         };
 
@@ -171,6 +156,15 @@ impl Default for DocCache {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Extract mtime as seconds since UNIX epoch from file metadata.
+fn mtime_secs(meta: &std::fs::Metadata) -> u64 {
+    meta.modified()
+        .ok()
+        .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 /// Simple non-cryptographic hash for content change detection.

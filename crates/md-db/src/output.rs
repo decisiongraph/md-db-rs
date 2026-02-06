@@ -1,6 +1,12 @@
+use std::io::IsTerminal;
+
 use serde_json::Value;
 
+use crate::frontmatter::{yaml_to_json, yaml_value_to_string};
 use crate::table::Table;
+
+/// Re-export for backward compatibility with external callers.
+pub use crate::frontmatter::yaml_value_to_string as yaml_value_display;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputFormat {
@@ -33,16 +39,14 @@ impl OutputFormat {
     }
 }
 
-use std::io::IsTerminal;
-
 /// Format a frontmatter field value for output.
 pub fn format_field_value(val: &serde_yaml::Value, format: OutputFormat) -> String {
     match format {
         OutputFormat::Json => {
-            let json = yaml_value_to_json(val);
+            let json = yaml_to_json(val);
             serde_json::to_string(&json).unwrap_or_default()
         }
-        _ => yaml_value_display(val),
+        _ => yaml_value_to_string(val),
     }
 }
 
@@ -123,55 +127,4 @@ fn strip_markdown(md: &str) -> String {
     let opts = Options::default();
     let root = comrak::parse_document(&arena, md, &opts);
     crate::ast_util::collect_text_blocks(root)
-}
-
-pub fn yaml_value_display(v: &serde_yaml::Value) -> String {
-    match v {
-        serde_yaml::Value::Null => "null".to_string(),
-        serde_yaml::Value::Bool(b) => b.to_string(),
-        serde_yaml::Value::Number(n) => n.to_string(),
-        serde_yaml::Value::String(s) => s.clone(),
-        serde_yaml::Value::Sequence(seq) => {
-            let items: Vec<String> = seq.iter().map(yaml_value_display).collect();
-            format!("[{}]", items.join(", "))
-        }
-        serde_yaml::Value::Mapping(_) => serde_yaml::to_string(v).unwrap_or_default(),
-        serde_yaml::Value::Tagged(t) => yaml_value_display(&t.value),
-    }
-}
-
-fn yaml_value_to_json(v: &serde_yaml::Value) -> Value {
-    match v {
-        serde_yaml::Value::Null => Value::Null,
-        serde_yaml::Value::Bool(b) => Value::Bool(*b),
-        serde_yaml::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Value::Number(i.into())
-            } else if let Some(f) = n.as_f64() {
-                serde_json::Number::from_f64(f)
-                    .map(Value::Number)
-                    .unwrap_or(Value::Null)
-            } else {
-                Value::Null
-            }
-        }
-        serde_yaml::Value::String(s) => Value::String(s.clone()),
-        serde_yaml::Value::Sequence(seq) => {
-            Value::Array(seq.iter().map(yaml_value_to_json).collect())
-        }
-        serde_yaml::Value::Mapping(map) => {
-            let obj: serde_json::Map<String, Value> = map
-                .iter()
-                .filter_map(|(k, v)| {
-                    let key = match k {
-                        serde_yaml::Value::String(s) => s.clone(),
-                        other => yaml_value_display(other),
-                    };
-                    Some((key, yaml_value_to_json(v)))
-                })
-                .collect();
-            Value::Object(obj)
-        }
-        serde_yaml::Value::Tagged(t) => yaml_value_to_json(&t.value),
-    }
 }
