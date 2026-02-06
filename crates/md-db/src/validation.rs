@@ -985,7 +985,7 @@ pub fn validate_directory(
     pattern: Option<&str>,
     user_config: Option<&UserConfig>,
 ) -> crate::error::Result<ValidationResult> {
-    let files = crate::discovery::discover_files(&dir, pattern, &[])?;
+    let files = crate::discovery::discover_files(&dir, pattern, &[], false)?;
 
     // Build known file set and known ID set for cross-ref validation
     let known_files: HashSet<PathBuf> = files
