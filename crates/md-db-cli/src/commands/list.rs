@@ -107,7 +107,7 @@ pub fn run(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let pattern = args.pattern.as_deref();
-    let mut files = discovery::discover_files(&args.dir, pattern, &filters)?;
+    let mut files = discovery::discover_files(&args.dir, pattern, &filters, false)?;
 
     // Sort by frontmatter field if requested
     if let Some(ref sort_spec) = args.sort {
