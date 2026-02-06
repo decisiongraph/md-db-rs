@@ -151,7 +151,7 @@ pub fn run(args: &WatchArgs) -> Result<(), Box<dyn std::error::Error>> {
 
             // Build known files/IDs from the whole directory for cross-ref validation
             let all_files =
-                md_db::discovery::discover_files(&args.dir, None, &[]).unwrap_or_default();
+                md_db::discovery::discover_files(&args.dir, None, &[], false).unwrap_or_default();
             let known_files: HashSet<PathBuf> = all_files
                 .iter()
                 .map(|p| p.canonicalize().unwrap_or_else(|_| p.clone()))
