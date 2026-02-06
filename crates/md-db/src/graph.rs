@@ -1,10 +1,21 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 
 use crate::ast_util;
 use crate::document::Document;
 use crate::error::Result;
 use crate::schema::Schema;
+
+/// A structural diagnostic found during graph health checks.
+#[derive(Debug, Clone)]
+pub struct GraphDiagnostic {
+    /// Diagnostic code: G010 (cycle), G011 (self-ref), G020 (orphan), G021 (disconnected), G030 (dangling ref)
+    pub code: String,
+    /// "error", "warning", or "info"
+    pub severity: String,
+    /// Human-readable description
+    pub message: String,
+}
 
 /// A node in the document graph.
 #[derive(Debug, Clone)]
@@ -278,6 +289,223 @@ impl DocGraph {
         out
     }
 
+    /// Run all structural health checks and return diagnostics.
+    pub fn check_health(&self, schema: &Schema) -> Vec<GraphDiagnostic> {
+        let mut diags = Vec::new();
+        self.check_self_references(&mut diags);
+        self.check_cycles(schema, &mut diags);
+        self.check_orphans(&mut diags);
+        self.check_disconnected(&mut diags);
+        self.check_dangling_refs(&mut diags);
+        diags
+    }
+
+    /// G011: edges where from == to.
+    fn check_self_references(&self, diags: &mut Vec<GraphDiagnostic>) {
+        for edge in &self.edges {
+            if edge.from == edge.to {
+                diags.push(GraphDiagnostic {
+                    code: "G011".into(),
+                    severity: "warning".into(),
+                    message: format!(
+                        "{} has self-reference via '{}'",
+                        edge.from, edge.relation
+                    ),
+                });
+            }
+        }
+    }
+
+    /// G010: cycles in relations marked acyclic=true.
+    /// Uses DFS with visited + recursion-stack per acyclic relation.
+    fn check_cycles(&self, schema: &Schema, diags: &mut Vec<GraphDiagnostic>) {
+        // Collect acyclic relation names (include inverse names too)
+        let acyclic_names: HashSet<&str> = schema
+            .relations
+            .iter()
+            .filter(|r| r.acyclic == Some(true))
+            .flat_map(|r| {
+                let mut names = vec![r.name.as_str()];
+                if let Some(ref inv) = r.inverse {
+                    names.push(inv.as_str());
+                }
+                names
+            })
+            .collect();
+
+        if acyclic_names.is_empty() {
+            return;
+        }
+
+        // Build adjacency list for acyclic edges only
+        let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
+        for edge in &self.edges {
+            if acyclic_names.contains(edge.relation.as_str()) && edge.from != edge.to {
+                adj.entry(edge.from.as_str())
+                    .or_default()
+                    .push(edge.to.as_str());
+            }
+        }
+
+        // DFS cycle detection
+        let mut visited: HashSet<&str> = HashSet::new();
+        let mut rec_stack: HashSet<&str> = HashSet::new();
+        let mut path: Vec<&str> = Vec::new();
+
+        for start in self.nodes.keys() {
+            if !visited.contains(start.as_str()) {
+                self.dfs_cycle(
+                    start.as_str(),
+                    &adj,
+                    &mut visited,
+                    &mut rec_stack,
+                    &mut path,
+                    diags,
+                );
+            }
+        }
+    }
+
+    fn dfs_cycle<'a>(
+        &'a self,
+        node: &'a str,
+        adj: &HashMap<&'a str, Vec<&'a str>>,
+        visited: &mut HashSet<&'a str>,
+        rec_stack: &mut HashSet<&'a str>,
+        path: &mut Vec<&'a str>,
+        diags: &mut Vec<GraphDiagnostic>,
+    ) {
+        visited.insert(node);
+        rec_stack.insert(node);
+        path.push(node);
+
+        if let Some(neighbors) = adj.get(node) {
+            for &neighbor in neighbors {
+                if !visited.contains(neighbor) {
+                    self.dfs_cycle(neighbor, adj, visited, rec_stack, path, diags);
+                } else if rec_stack.contains(neighbor) {
+                    // Found cycle — extract it from path
+                    let cycle_start = path.iter().position(|&n| n == neighbor).unwrap();
+                    let cycle: Vec<&str> = path[cycle_start..].to_vec();
+                    let cycle_str = cycle.join(" -> ");
+                    diags.push(GraphDiagnostic {
+                        code: "G010".into(),
+                        severity: "error".into(),
+                        message: format!(
+                            "cycle detected in acyclic relation: {} -> {}",
+                            cycle_str, neighbor
+                        ),
+                    });
+                }
+            }
+        }
+
+        path.pop();
+        rec_stack.remove(node);
+    }
+
+    /// G020: nodes with zero incoming AND zero outgoing edges.
+    fn check_orphans(&self, diags: &mut Vec<GraphDiagnostic>) {
+        let mut has_edge: HashSet<&str> = HashSet::new();
+        for edge in &self.edges {
+            has_edge.insert(edge.from.as_str());
+            has_edge.insert(edge.to.as_str());
+        }
+
+        for id in self.nodes.keys() {
+            if !has_edge.contains(id.as_str()) {
+                diags.push(GraphDiagnostic {
+                    code: "G020".into(),
+                    severity: "info".into(),
+                    message: format!("{id} is an orphan (no incoming or outgoing edges)"),
+                });
+            }
+        }
+    }
+
+    /// G021: more than one connected component (treating edges as undirected).
+    fn check_disconnected(&self, diags: &mut Vec<GraphDiagnostic>) {
+        if self.nodes.is_empty() {
+            return;
+        }
+
+        // Build undirected adjacency
+        let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
+        for edge in &self.edges {
+            adj.entry(edge.from.as_str())
+                .or_default()
+                .push(edge.to.as_str());
+            adj.entry(edge.to.as_str())
+                .or_default()
+                .push(edge.from.as_str());
+        }
+
+        let mut visited: HashSet<&str> = HashSet::new();
+        let mut components: Vec<Vec<&str>> = Vec::new();
+
+        for id in self.nodes.keys() {
+            if visited.contains(id.as_str()) {
+                continue;
+            }
+            // BFS from this node
+            let mut component = Vec::new();
+            let mut queue = VecDeque::new();
+            queue.push_back(id.as_str());
+            visited.insert(id.as_str());
+
+            while let Some(current) = queue.pop_front() {
+                component.push(current);
+                if let Some(neighbors) = adj.get(current) {
+                    for &n in neighbors {
+                        if self.nodes.contains_key(n) && visited.insert(n) {
+                            queue.push_back(n);
+                        }
+                    }
+                }
+            }
+
+            components.push(component);
+        }
+
+        if components.len() > 1 {
+            let summary: Vec<String> = components
+                .iter()
+                .map(|c| {
+                    if c.len() <= 3 {
+                        c.join(", ")
+                    } else {
+                        format!("{}, ... ({} nodes)", c[..2].join(", "), c.len())
+                    }
+                })
+                .collect();
+            diags.push(GraphDiagnostic {
+                code: "G021".into(),
+                severity: "warning".into(),
+                message: format!(
+                    "graph has {} disconnected components: [{}]",
+                    components.len(),
+                    summary.join("] [")
+                ),
+            });
+        }
+    }
+
+    /// G030: edges pointing to nodes that don't exist in the graph.
+    fn check_dangling_refs(&self, diags: &mut Vec<GraphDiagnostic>) {
+        for edge in &self.edges {
+            if !self.nodes.contains_key(&edge.to) {
+                diags.push(GraphDiagnostic {
+                    code: "G030".into(),
+                    severity: "error".into(),
+                    message: format!(
+                        "{} references unknown document {} via '{}'",
+                        edge.from, edge.to, edge.relation
+                    ),
+                });
+            }
+        }
+    }
+
     /// Find next available numeric ID for a type prefix (e.g. "ADR" → "ADR-005").
     pub fn next_id(&self, prefix: &str) -> String {
         let prefix_upper = prefix.to_uppercase();
@@ -475,6 +703,191 @@ mod tests {
         assert!(dot.starts_with("digraph docs"));
         assert!(dot.contains("ADR-001"));
         assert!(dot.contains("->"));
+    }
+
+    // ─── Health check tests ──────────────────────────────────────────────────
+
+    fn make_node(id: &str) -> DocNode {
+        DocNode {
+            id: id.to_string(),
+            path: PathBuf::from(format!("{}.md", id.to_lowercase())),
+            doc_type: Some("test".into()),
+            title: Some(id.into()),
+            status: None,
+        }
+    }
+
+    fn make_schema(acyclic_relations: &[&str]) -> Schema {
+        use crate::schema::{Cardinality, RelationDef};
+        Schema {
+            types: vec![],
+            relations: acyclic_relations
+                .iter()
+                .map(|name| RelationDef {
+                    name: name.to_string(),
+                    inverse: None,
+                    cardinality: Cardinality::Many,
+                    description: None,
+                    acyclic: Some(true),
+                })
+                .collect(),
+            ref_formats: vec![],
+        }
+    }
+
+    fn make_schema_no_acyclic() -> Schema {
+        Schema {
+            types: vec![],
+            relations: vec![],
+            ref_formats: vec![],
+        }
+    }
+
+    #[test]
+    fn test_check_self_reference() {
+        let mut nodes = BTreeMap::new();
+        nodes.insert("A".into(), make_node("A"));
+
+        let edges = vec![DocEdge {
+            from: "A".into(),
+            to: "A".into(),
+            relation: "related".into(),
+        }];
+
+        let graph = DocGraph { nodes, edges };
+        let schema = make_schema_no_acyclic();
+        let diags = graph.check_health(&schema);
+
+        let g011: Vec<_> = diags.iter().filter(|d| d.code == "G011").collect();
+        assert_eq!(g011.len(), 1);
+        assert!(g011[0].message.contains("self-reference"));
+    }
+
+    #[test]
+    fn test_check_cycle_detected() {
+        let mut nodes = BTreeMap::new();
+        nodes.insert("A".into(), make_node("A"));
+        nodes.insert("B".into(), make_node("B"));
+        nodes.insert("C".into(), make_node("C"));
+
+        let edges = vec![
+            DocEdge { from: "A".into(), to: "B".into(), relation: "supersedes".into() },
+            DocEdge { from: "B".into(), to: "C".into(), relation: "supersedes".into() },
+            DocEdge { from: "C".into(), to: "A".into(), relation: "supersedes".into() },
+        ];
+
+        let graph = DocGraph { nodes, edges };
+        let schema = make_schema(&["supersedes"]);
+        let diags = graph.check_health(&schema);
+
+        let g010: Vec<_> = diags.iter().filter(|d| d.code == "G010").collect();
+        assert!(!g010.is_empty(), "should detect cycle");
+        assert!(g010[0].severity == "error");
+    }
+
+    #[test]
+    fn test_check_no_cycle_without_acyclic() {
+        let mut nodes = BTreeMap::new();
+        nodes.insert("A".into(), make_node("A"));
+        nodes.insert("B".into(), make_node("B"));
+
+        let edges = vec![
+            DocEdge { from: "A".into(), to: "B".into(), relation: "related".into() },
+            DocEdge { from: "B".into(), to: "A".into(), relation: "related".into() },
+        ];
+
+        let graph = DocGraph { nodes, edges };
+        let schema = make_schema_no_acyclic();
+        let diags = graph.check_health(&schema);
+
+        // No G010 because no acyclic relations
+        let g010: Vec<_> = diags.iter().filter(|d| d.code == "G010").collect();
+        assert!(g010.is_empty());
+    }
+
+    #[test]
+    fn test_check_orphan() {
+        let mut nodes = BTreeMap::new();
+        nodes.insert("A".into(), make_node("A"));
+        nodes.insert("B".into(), make_node("B"));
+        nodes.insert("ORPHAN".into(), make_node("ORPHAN"));
+
+        let edges = vec![DocEdge {
+            from: "A".into(),
+            to: "B".into(),
+            relation: "related".into(),
+        }];
+
+        let graph = DocGraph { nodes, edges };
+        let schema = make_schema_no_acyclic();
+        let diags = graph.check_health(&schema);
+
+        let g020: Vec<_> = diags.iter().filter(|d| d.code == "G020").collect();
+        assert_eq!(g020.len(), 1);
+        assert!(g020[0].message.contains("ORPHAN"));
+    }
+
+    #[test]
+    fn test_check_disconnected_components() {
+        let mut nodes = BTreeMap::new();
+        nodes.insert("A".into(), make_node("A"));
+        nodes.insert("B".into(), make_node("B"));
+        nodes.insert("C".into(), make_node("C"));
+        nodes.insert("D".into(), make_node("D"));
+
+        // Two components: {A,B} and {C,D}
+        let edges = vec![
+            DocEdge { from: "A".into(), to: "B".into(), relation: "related".into() },
+            DocEdge { from: "C".into(), to: "D".into(), relation: "related".into() },
+        ];
+
+        let graph = DocGraph { nodes, edges };
+        let schema = make_schema_no_acyclic();
+        let diags = graph.check_health(&schema);
+
+        let g021: Vec<_> = diags.iter().filter(|d| d.code == "G021").collect();
+        assert_eq!(g021.len(), 1);
+        assert!(g021[0].message.contains("2 disconnected components"));
+    }
+
+    #[test]
+    fn test_check_dangling_ref() {
+        let mut nodes = BTreeMap::new();
+        nodes.insert("A".into(), make_node("A"));
+
+        let edges = vec![DocEdge {
+            from: "A".into(),
+            to: "MISSING".into(),
+            relation: "supersedes".into(),
+        }];
+
+        let graph = DocGraph { nodes, edges };
+        let schema = make_schema_no_acyclic();
+        let diags = graph.check_health(&schema);
+
+        let g030: Vec<_> = diags.iter().filter(|d| d.code == "G030").collect();
+        assert_eq!(g030.len(), 1);
+        assert!(g030[0].message.contains("MISSING"));
+    }
+
+    #[test]
+    fn test_check_healthy_graph() {
+        let mut nodes = BTreeMap::new();
+        nodes.insert("A".into(), make_node("A"));
+        nodes.insert("B".into(), make_node("B"));
+        nodes.insert("C".into(), make_node("C"));
+
+        // Linear chain, all connected, no cycles, no orphans
+        let edges = vec![
+            DocEdge { from: "A".into(), to: "B".into(), relation: "enables".into() },
+            DocEdge { from: "B".into(), to: "C".into(), relation: "enables".into() },
+        ];
+
+        let graph = DocGraph { nodes, edges };
+        let schema = make_schema(&["enables"]);
+        let diags = graph.check_health(&schema);
+
+        assert!(diags.is_empty(), "healthy graph should have no diagnostics, got: {:?}", diags.iter().map(|d| &d.message).collect::<Vec<_>>());
     }
 
     #[test]

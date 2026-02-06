@@ -118,6 +118,8 @@ pub struct RelationDef {
     /// "one" or "many" — determines if the field is `ref` or `ref[]`.
     pub cardinality: Cardinality,
     pub description: Option<String>,
+    /// If true, cycles through this relation are reported as errors.
+    pub acyclic: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -419,6 +421,7 @@ fn parse_relation_def(node: &KdlNode) -> Result<RelationDef> {
 
     let inverse = get_string_prop(node, "inverse");
     let description = get_string_prop(node, "description");
+    let acyclic = get_bool_prop(node, "acyclic");
 
     let cardinality_str = get_string_prop(node, "cardinality").unwrap_or("many".into());
     let cardinality = match cardinality_str.as_str() {
@@ -436,6 +439,7 @@ fn parse_relation_def(node: &KdlNode) -> Result<RelationDef> {
         inverse,
         cardinality,
         description,
+        acyclic,
     })
 }
 
