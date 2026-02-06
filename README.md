@@ -536,6 +536,139 @@ Added explicit connection.close() in finally blocks.
 - ORMs that don't auto-close connections in error paths are dangerous
 ```
 
+## Write Commands
+
+### Set a field
+
+```sh
+$ md-db set docs/adr-001.md --field status=deprecated
+```
+
+### Replace section content
+
+```sh
+$ md-db set docs/adr-001.md --section "Decision" --content "We chose MongoDB instead."
+```
+
+### Append to section
+
+```sh
+$ md-db set docs/adr-001.md --section "Consequences" --append "Additional risk: vendor lock-in."
+```
+
+### Update a table cell
+
+```sh
+$ md-db set docs/adr-001.md --section "Alternatives Considered" --table 0 --cell Score,0 --value 10
+```
+
+### Add a table row
+
+```sh
+$ md-db set docs/adr-001.md --section "Alternatives Considered" --table 0 --add-row "CockroachDB,8,Distributed SQL"
+```
+
+### Dry run (print to stdout)
+
+```sh
+$ md-db set docs/adr-001.md --field status=deprecated --dry-run
+```
+
+## Deprecate
+
+Set a document's status to deprecated, optionally marking it as superseded:
+
+```sh
+$ md-db deprecate docs/adr-001.md --schema schema.kdl --superseded-by ADR-005
+
+$ md-db deprecate docs/adr-001.md --schema schema.kdl --superseded-by ADR-005 --dir docs/ --dry-run
+```
+
+## Create New Documents
+
+Generate documents from schema type definitions:
+
+```sh
+# Print to stdout
+$ md-db new --type adr --schema schema.kdl
+
+# With pre-filled fields
+$ md-db new --type adr --schema schema.kdl --field title="Use MongoDB" --field status=proposed
+
+# Auto-generate next ID and write to file
+$ md-db new --type adr --schema schema.kdl --dir docs/ --auto-id --fill
+```
+
+## Inspect
+
+Frontmatter + sections + validation in a single call:
+
+```sh
+$ md-db inspect docs/adr-001.md --schema schema.kdl
+$ md-db inspect docs/adr-001.md --schema schema.kdl --users users.yaml --format json
+$ echo '---\ntype: adr\n...' | md-db inspect --stdin --schema schema.kdl
+```
+
+## Describe Schema
+
+Explore schema types, fields, sections, and relations:
+
+```sh
+# List all types
+$ md-db describe --schema schema.kdl
+
+# Show a specific type
+$ md-db describe --schema schema.kdl --type adr
+
+# Show a specific field
+$ md-db describe --schema schema.kdl --type adr --field status
+
+# Show all relations
+$ md-db describe --schema schema.kdl --relations
+
+# Export full schema as JSON
+$ md-db describe --schema schema.kdl --export --format json
+```
+
+## Refs & Backlinks
+
+Query forward references or backlinks for a document:
+
+```sh
+# Outgoing refs from a document
+$ md-db refs docs/ --schema schema.kdl --from ADR-001
+
+# Backlinks to a document
+$ md-db refs docs/ --schema schema.kdl --to GOV-001
+
+# Transitive refs (depth 2)
+$ md-db refs docs/ --schema schema.kdl --from ADR-001 --depth 2
+
+$ md-db refs docs/ --schema schema.kdl --to GOV-001 --format json
+```
+
+## Graph Export
+
+Export the document link graph:
+
+```sh
+# Mermaid (default)
+$ md-db graph docs/ --schema schema.kdl
+graph LR
+  ADR-001 -->|enables| OPP-001
+  ADR-001 -->|triggers| GOV-001
+  ...
+
+# DOT (Graphviz)
+$ md-db graph docs/ --schema schema.kdl --format dot
+
+# JSON
+$ md-db graph docs/ --schema schema.kdl --format json
+
+# Filter by type
+$ md-db graph docs/ --schema schema.kdl --type adr
+```
+
 ## Architecture
 
 **AST-first, no regex for content.** All markdown manipulation via [comrak](https://github.com/kivikakk/comrak) AST nodes with `sourcepos` byte offsets for zero-copy section extraction.
@@ -564,16 +697,67 @@ crates/
       discovery.rs        # File discovery with glob + filters
       output.rs           # text|markdown|json formatters
       schema.rs           # KDL schema parser
+      graph.rs            # Document link graph (mermaid, DOT, JSON)
+      template.rs         # New document generation from schema
       users.rs            # User/team config loader
       validation.rs       # Validation engine
   md-db-cli/       # binary
     src/
       main.rs
       commands/
+        batch.rs
+        deprecate.rs
+        describe.rs
+        diff.rs
+        export.rs
+        fix.rs
         get.rs
+        graph.rs
+        hook.rs
+        init.rs
+        inspect.rs
         list.rs
+        mcp.rs
+        migrate.rs
+        new.rs
+        refs.rs
+        rename.rs
+        search.rs
+        set.rs
+        stats.rs
+        sync.rs
         validate.rs
+        watch.rs
 ```
+
+### CLI commands
+
+| Command | Description |
+|---------|-------------|
+| `get` | Read fields, sections, table cells from a document |
+| `set` | Update fields, sections, table cells in a document |
+| `list` | List/filter markdown files by frontmatter |
+| `validate` | Validate documents against a KDL schema |
+| `inspect` | Frontmatter + sections + validation in one call |
+| `new` | Create a new document from a schema type |
+| `deprecate` | Set status to deprecated, optionally mark superseded |
+| `describe` | Explore schema types, fields, sections, relations |
+| `refs` | Show forward refs or backlinks for a document |
+| `graph` | Export document link graph (mermaid, DOT, JSON) |
+| `batch` | Apply field mutations to all docs matching a filter |
+| `diff` | Show structural diff between two document versions |
+| `export` | Export documents to a static HTML site |
+| `fix` | Auto-fix common validation errors |
+| `hook` | Install or uninstall a git pre-commit hook |
+| `init` | Scaffold a new md-db project with schema and dirs |
+| `mcp` | Start MCP (Model Context Protocol) server over stdio |
+| `migrate` | Detect schema changes and migrate documents |
+| `rename` | Rename a document ID and cascade-update all refs |
+| `search` | Full-text search across content and frontmatter |
+| `stats` | Show document set health overview |
+| `sync` | Sync bidirectional relations (add missing inverses) |
+| `watch` | Watch directory and re-validate on file changes |
+| `completions` | Generate shell completions (bash, zsh, fish, etc.) |
 
 ### Dependencies
 

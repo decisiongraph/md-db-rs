@@ -1,0 +1,6 @@
+[profile.dev.package."*"]
+debug = false
+strip = true
+
+[profile.dev]
+debug = 1  # line tables only — faster builds, still get backtraces

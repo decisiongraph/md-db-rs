@@ -7,7 +7,7 @@ description = "Markdown-as-Database library — structured documents with YAML f
 repository = "https://github.com/decisiongraph/md-db-rs"
 
 [dependencies]
-comrak = "0.36"
+comrak = { version = "0.36", default-features = false }
 gray_matter = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -22,3 +22,6 @@ ignore = "0.4"
 
 [dev-dependencies]
 tempfile = "3"
+
+[features]
+syntax-highlight = ["comrak/syntect"]

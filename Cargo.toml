@@ -1,3 +1,6 @@
 [workspace]
 members = ["crates/md-db", "crates/md-db-cli"]
 resolver = "2"
+
+[profile.release]
+lto = "thin"
