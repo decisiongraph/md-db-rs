@@ -22,6 +22,7 @@ pub struct TypeDef {
     pub max_count: Option<usize>,
     pub fields: Vec<FieldDef>,
     pub sections: Vec<SectionDef>,
+    pub rules: Vec<RuleDef>,
 }
 
 #[derive(Debug, Clone)]
@@ -61,6 +62,15 @@ impl std::fmt::Display for FieldType {
             FieldType::UserArray => write!(f, "user[]"),
         }
     }
+}
+
+/// A conditional validation rule: when a field equals a value, other fields become required.
+#[derive(Debug, Clone)]
+pub struct RuleDef {
+    pub name: String,
+    pub when_field: String,
+    pub when_equals: String,
+    pub then_required: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -242,11 +252,13 @@ fn parse_type_def(node: &KdlNode) -> Result<TypeDef> {
 
     let mut fields = Vec::new();
     let mut sections = Vec::new();
+    let mut rules = Vec::new();
 
     for child in children.nodes() {
         match child.name().value() {
             "field" => fields.push(parse_field_def(child)?),
             "section" => sections.push(parse_section_def(child)?),
+            "rule" => rules.push(parse_rule_def(child)?),
             other => {
                 return Err(Error::SchemaParse(format!(
                     "unknown node in type '{name}': '{other}'"
@@ -262,6 +274,7 @@ fn parse_type_def(node: &KdlNode) -> Result<TypeDef> {
         max_count,
         fields,
         sections,
+        rules,
     })
 }
 
@@ -456,6 +469,54 @@ fn parse_diagram_def(node: &KdlNode) -> Result<DiagramDef> {
     Ok(DiagramDef {
         required: get_bool_prop(node, "required").unwrap_or(true),
         diagram_type: get_string_prop(node, "type"),
+    })
+}
+
+fn parse_rule_def(node: &KdlNode) -> Result<RuleDef> {
+    let name = get_string_arg(node)
+        .ok_or_else(|| Error::SchemaParse("rule node missing name argument".into()))?;
+
+    let mut when_field = String::new();
+    let mut when_equals = String::new();
+    let mut then_required = Vec::new();
+
+    if let Some(body) = node.children() {
+        for child in body.nodes() {
+            match child.name().value() {
+                "when" => {
+                    when_field = get_string_arg(child).unwrap_or_default();
+                    when_equals = get_string_prop(child, "equals").unwrap_or_default();
+                }
+                "then-required" => {
+                    if let Some(field_name) = get_string_arg(child) {
+                        then_required.push(field_name);
+                    }
+                }
+                other => {
+                    return Err(Error::SchemaParse(format!(
+                        "unknown node in rule '{name}': '{other}'"
+                    )));
+                }
+            }
+        }
+    }
+
+    if when_field.is_empty() {
+        return Err(Error::SchemaParse(format!(
+            "rule '{name}' missing 'when' clause"
+        )));
+    }
+    if then_required.is_empty() {
+        return Err(Error::SchemaParse(format!(
+            "rule '{name}' missing 'then-required' clause"
+        )));
+    }
+
+    Ok(RuleDef {
+        name,
+        when_field,
+        when_equals,
+        then_required,
     })
 }
 
@@ -839,5 +900,74 @@ type "t" {
         let schema = Schema::from_str(kdl).unwrap();
         assert!(schema.types[0].folder.is_none());
         assert!(schema.types[0].max_count.is_none());
+    }
+
+    #[test]
+    fn test_parse_rules() {
+        let kdl = r#"
+type "adr" {
+    field "status" type="enum" required=#true {
+        values "proposed" "accepted" "superseded"
+    }
+    field "date" type="string"
+    field "superseded_by" type="ref"
+    section "Decision" required=#true
+
+    rule "accepted requires date" {
+        when "status" equals="accepted"
+        then-required "date"
+    }
+    rule "superseded requires superseded_by" {
+        when "status" equals="superseded"
+        then-required "superseded_by"
+    }
+}
+"#;
+        let schema = Schema::from_str(kdl).unwrap();
+        let t = &schema.types[0];
+        assert_eq!(t.rules.len(), 2);
+
+        assert_eq!(t.rules[0].name, "accepted requires date");
+        assert_eq!(t.rules[0].when_field, "status");
+        assert_eq!(t.rules[0].when_equals, "accepted");
+        assert_eq!(t.rules[0].then_required, vec!["date"]);
+
+        assert_eq!(t.rules[1].name, "superseded requires superseded_by");
+        assert_eq!(t.rules[1].when_field, "status");
+        assert_eq!(t.rules[1].when_equals, "superseded");
+        assert_eq!(t.rules[1].then_required, vec!["superseded_by"]);
+    }
+
+    #[test]
+    fn test_parse_rule_multiple_then_required() {
+        let kdl = r#"
+type "t" {
+    field "status" type="string"
+    field "a" type="string"
+    field "b" type="string"
+    section "S"
+
+    rule "active requires a and b" {
+        when "status" equals="active"
+        then-required "a"
+        then-required "b"
+    }
+}
+"#;
+        let schema = Schema::from_str(kdl).unwrap();
+        let rule = &schema.types[0].rules[0];
+        assert_eq!(rule.then_required, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn test_type_without_rules() {
+        let kdl = r#"
+type "t" {
+    field "x" type="string"
+    section "S"
+}
+"#;
+        let schema = Schema::from_str(kdl).unwrap();
+        assert!(schema.types[0].rules.is_empty());
     }
 }
