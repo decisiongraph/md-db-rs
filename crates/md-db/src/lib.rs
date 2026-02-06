@@ -13,6 +13,7 @@ pub mod section;
 pub mod table;
 pub mod template;
 pub mod users;
+pub mod cache;
 pub mod sync;
 pub mod search;
 pub mod validation;
