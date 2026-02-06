@@ -18,6 +18,10 @@ pub struct ValidateArgs {
     #[arg(long)]
     pub stdin: bool,
 
+    /// Accept newline-separated file paths from stdin
+    #[arg(long)]
+    pub stdin_list: bool,
+
     /// Path to user/team config YAML file
     #[arg(long)]
     pub users: Option<PathBuf>,
@@ -52,11 +56,67 @@ pub fn run(args: &ValidateArgs) -> Result<(), Box<dyn std::error::Error>> {
         validation::ValidationResult {
             file_results: vec![fr],
         }
+    } else if args.stdin_list {
+        let mut input = String::new();
+        std::io::Read::read_to_string(&mut std::io::stdin(), &mut input)?;
+        let paths: Vec<PathBuf> = input
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty() && l.ends_with(".md"))
+            .map(PathBuf::from)
+            .filter(|p| p.exists())
+            .collect();
+
+        let known_files: std::collections::HashSet<PathBuf> = paths
+            .iter()
+            .filter_map(|p| p.canonicalize().ok())
+            .collect();
+        let known_ids: std::collections::HashSet<String> = paths
+            .iter()
+            .map(|p| md_db::graph::path_to_id(p))
+            .collect();
+
+        let mut file_results = Vec::new();
+        for path in &paths {
+            let doc = match md_db::document::Document::from_file(path) {
+                Ok(d) => d,
+                Err(e) => {
+                    file_results.push(validation::FileResult {
+                        path: path.display().to_string(),
+                        diagnostics: vec![validation::Diagnostic {
+                            severity: validation::Severity::Error,
+                            code: "E000".into(),
+                            message: format!("failed to parse: {e}"),
+                            location: "file".into(),
+                            hint: None,
+                        }],
+                    });
+                    continue;
+                }
+            };
+            // Skip files without frontmatter type
+            if doc.frontmatter.is_none() {
+                continue;
+            }
+            if let Some(ref fm) = doc.frontmatter {
+                if fm.get("type").is_none() {
+                    continue;
+                }
+            }
+            file_results.push(validation::validate_document(
+                &doc,
+                &schema,
+                &known_files,
+                &known_ids,
+                user_config.as_ref(),
+            ));
+        }
+        validation::ValidationResult { file_results }
     } else {
         let dir = args
             .dir
             .as_ref()
-            .ok_or("directory argument required when not using --stdin")?;
+            .ok_or("directory argument required when not using --stdin or --stdin-list")?;
         let pattern = args.pattern.as_deref();
         validation::validate_directory(dir, &schema, pattern, user_config.as_ref())?
     };
