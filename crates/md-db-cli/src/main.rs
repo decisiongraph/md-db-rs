@@ -20,6 +20,8 @@ enum Commands {
     Diff(commands::diff::DiffArgs),
     /// Describe schema types, fields, sections, and relations
     Describe(commands::describe::DescribeArgs),
+    /// Export documents to a static HTML site
+    Export(commands::export::ExportArgs),
     /// Auto-fix common validation errors
     Fix(commands::fix::FixArgs),
     /// Read fields, sections, or table cells from a markdown file
@@ -48,6 +50,8 @@ enum Commands {
     Search(commands::search::SearchArgs),
     /// Update fields, sections, or table cells in a markdown file
     Set(commands::set::SetArgs),
+    /// Show document set health overview (counts, validation, graph stats)
+    Stats(commands::stats::StatsArgs),
     /// Sync bidirectional relations (add missing inverse refs)
     Sync(commands::sync::SyncArgs),
     /// Generate shell completions for bash, zsh, fish, elvish, or powershell
@@ -65,6 +69,7 @@ fn main() {
         Commands::Deprecate(args) => commands::deprecate::run(args),
         Commands::Diff(args) => commands::diff::run(args),
         Commands::Describe(args) => commands::describe::run(args),
+        Commands::Export(args) => commands::export::run(args),
         Commands::Fix(args) => commands::fix::run(args),
         Commands::Get(args) => commands::get::run(args),
         Commands::Graph(args) => commands::graph::run(args),
@@ -79,6 +84,7 @@ fn main() {
         Commands::Rename(args) => commands::rename::run(args),
         Commands::Search(args) => commands::search::run(args),
         Commands::Set(args) => commands::set::run(args),
+        Commands::Stats(args) => commands::stats::run(args),
         Commands::Sync(args) => commands::sync::run(args),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
