@@ -12,6 +12,8 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
+    /// Apply field mutations to all docs matching a filter
+    Batch(commands::batch::BatchArgs),
     /// Deprecate a document (set status, optionally mark superseded)
     Deprecate(commands::deprecate::DeprecateArgs),
     /// Show structural diff between two versions of a document
@@ -53,6 +55,7 @@ fn main() {
     let cli = Cli::parse();
 
     let result = match &cli.command {
+        Commands::Batch(args) => commands::batch::run(args),
         Commands::Deprecate(args) => commands::deprecate::run(args),
         Commands::Diff(args) => commands::diff::run(args),
         Commands::Describe(args) => commands::describe::run(args),
